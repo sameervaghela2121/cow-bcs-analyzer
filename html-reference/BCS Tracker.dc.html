@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  @font-face { font-family: system-stack; src: local(-apple-system); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar, #cfc9ba); border-radius: 4px; }
+  body { margin: 0; }
+  a { color: #166534; }
+  a:hover { color: #0f4a26; }
+  input, select, button { font-family: inherit; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 820px) {
+    [data-part="sidebar"] { position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; top: auto !important; width: 100% !important; height: 68px !important; flex-direction: row !important; padding: 6px 6px !important; gap: 2px !important; z-index: 40; box-shadow: 0 -2px 10px rgba(0,0,0,0.18); }
+    [data-part="logo"], [data-part="sidebar-footer"] { display: none !important; }
+    [data-nav] { flex-direction: column !important; flex: 1 !important; justify-content: center !important; align-items: center !important; padding: 6px 2px !important; font-size: 10.5px !important; gap: 3px !important; text-align: center; border-radius: 8px !important; }
+    [data-nav] span:first-child { font-size: 18px !important; }
+    [data-review-badge] { position: absolute !important; top: 2px !important; right: 10% !important; }
+    [data-part="main"] { padding-bottom: 78px !important; }
+    [data-page] { padding: 18px 16px 32px !important; }
+  }
+  @media (max-width: 480px) {
+    [data-part="grid"] { grid-template-columns: repeat(auto-fill, minmax(150px,1fr)) !important; gap: 12px !important; }
+  }
+  @media (max-width: 640px) {
+    [data-row="review-item"], [data-row="history-item"] { flex-wrap: wrap !important; }
+  }
+</style>
+</helmet>
+
+<div style="{{ rootStyle }}">
+
+  <sc-if value="{{ isLoggedOut }}" hint-placeholder-val="{{ true }}">
+    <div style="width:100%; display:flex; align-items:center; justify-content:center; background:var(--bg-page);">
+      <div style="width:360px; max-width:90vw; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:32px 28px;">
+        <div style="font-size:18px; font-weight:800; margin-bottom:4px;">BCS Tracker</div>
+        <div style="font-size:13px; color:var(--text-secondary); margin-bottom:24px;">Riverbend Dairy &middot; staff login</div>
+
+        <sc-if value="{{ isAuthMobileStage }}" hint-placeholder-val="{{ true }}">
+          <label style="display:block; font-size:13px; font-weight:600; color:#3a3f36; margin-bottom:6px;">Mobile number</label>
+          <input type="tel" placeholder="e.g. 555 123 4567" value="{{ authMobile }}" onChange="{{ setAuthMobile }}" style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:15px; border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-card); margin-bottom:16px;"/>
+          <sc-if value="{{ authError }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#fbe4e4; color:#b91c1c; font-size:13px; padding:9px 12px; border-radius:8px; margin-bottom:14px;">{{ authError }}</div>
+          </sc-if>
+          <button onClick="{{ sendCode }}" style="width:100%; padding:12px; border-radius:8px; border:none; background:#1c2a20; color:#fff; font-size:14px; font-weight:700; cursor:pointer;">Send code</button>
+        </sc-if>
+
+        <sc-if value="{{ isAuthOtpStage }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px; color:#5c5748; margin-bottom:16px;">Code sent to {{ authMobile }}</div>
+          <label style="display:block; font-size:13px; font-weight:600; color:#3a3f36; margin-bottom:6px;">Enter code</label>
+          <input type="text" placeholder="4-6 digit code" value="{{ authCode }}" onChange="{{ setAuthCode }}" style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:15px; border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-card); margin-bottom:16px; letter-spacing:2px;"/>
+          <button onClick="{{ verifyCode }}" style="width:100%; padding:12px; border-radius:8px; border:none; background:#1c2a20; color:#fff; font-size:14px; font-weight:700; cursor:pointer;">Verify &amp; log in</button>
+          <div onClick="{{ backToMobile }}" style="cursor:pointer; text-align:center; font-size:12.5px; color:#166534; font-weight:600; margin-top:14px;">Change number</div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isLoggedIn }}" hint-placeholder-val="{{ false }}">
+  <div data-part="sidebar" style="width:216px; flex-shrink:0; background:#1c2a20; color:#eee8d8; display:flex; flex-direction:column; padding:22px 14px; gap:2px;">
+    <div data-part="logo" style="font-size:17px; font-weight:700; letter-spacing:0.2px; padding:2px 10px 22px; color:#f4f0e2;">BCS Tracker</div>
+
+    <div data-nav onClick="{{ goUpload }}" style="{{ navUploadStyle }}">
+      <span style="font-size:15px;">&#8593;</span> Upload
+    </div>
+    <div data-nav onClick="{{ goHerd }}" style="{{ navHerdStyle }}">
+      <span style="font-size:15px;">&#9638;</span> Herd
+    </div>
+    <div data-nav onClick="{{ goReview }}" style="{{ navReviewStyle }}">
+      <span style="font-size:15px;">&#9873;</span> Review
+      <sc-if value="{{ hasFlagged }}" hint-placeholder-val="{{ true }}">
+        <span data-review-badge style="background:#dc2626; color:#fff; font-size:11px; font-weight:700; border-radius:10px; min-width:20px; height:20px; display:flex; align-items:center; justify-content:center; padding:0 6px; margin-left:auto;">{{ flaggedCount }}</span>
+      </sc-if>
+    </div>
+    <div data-nav onClick="{{ goAudit }}" style="{{ navAuditStyle }}">
+      <span style="font-size:15px;">&#128203;</span> Audit Log
+    </div>
+    <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}">
+      <div data-nav onClick="{{ goUsers }}" style="{{ navUsersStyle }}">
+        <span style="font-size:15px;">&#128100;</span> User Management
+      </div>
+    </sc-if>
+
+    <div data-part="sidebar-footer" style="margin-top:auto; padding:10px 10px 4px; font-size:11px; color:var(--text-tertiary); line-height:1.5;">Riverbend Dairy</div>
+    <div data-part="sidebar-footer" style="padding:0 10px 10px;">
+      <div style="font-size:10.5px; color:#7d7666; margin-bottom:5px;">Preview role (demo)</div>
+      <select value="{{ currentRole }}" onChange="{{ setRole }}" style="width:100%; padding:7px 8px; border-radius:6px; border:1px solid #3a4a3e; background:#26362b; color:#eee8d8; font-size:12px;">
+        <sc-for list="{{ roleOptions }}" as="ro" hint-placeholder-count="2">
+          <option value="{{ ro.key }}">{{ ro.label }}</option>
+        </sc-for>
+      </select>
+      <div onClick="{{ toggleTheme }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:#c9c2ae; margin-top:12px; padding:7px 8px; border-radius:6px; background:#26362b;">
+        <span>{{ themeLabel }}</span>
+        <span style="font-size:13px;">{{ themeIcon }}</span>
+      </div>
+      <div onClick="{{ logOut }}" style="cursor:pointer; font-size:11.5px; color:#c9c2ae; margin-top:10px;">Log out</div>
+    </div>
+  </div>
+
+  <div data-part="main" style="flex:1; overflow-y:auto; min-width:0;">
+
+    <sc-if value="{{ isUpload }}" hint-placeholder-val="{{ true }}">
+      <div data-page style="max-width:640px; margin:0 auto; padding:36px 28px 60px;">
+        <h1 style="font-size:22px; font-weight:700; margin:0 0 4px;">Upload BCS Reading</h1>
+        <p style="font-size:14px; color:var(--text-secondary); margin:0 0 28px;">Upload a photo or short clip from the parlor exit or feeding lane.</p>
+
+        <label style="display:block; font-size:13px; font-weight:600; color:#3a3f36; margin-bottom:6px;">Cow ID</label>
+        <input type="text" placeholder="e.g. 4417" value="{{ uploadCowId }}" onChange="{{ setUploadCowId }}" style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:16px; border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-card); margin-bottom:20px;"/>
+
+        <sc-if value="{{ uploadError }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fbe4e4; color:#b91c1c; font-size:13px; padding:10px 14px; border-radius:8px; margin-bottom:16px;">{{ uploadError }}</div>
+        </sc-if>
+
+        <sc-if value="{{ isIdle }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ openFilePicker }}" onDragOver="{{ preventDefault }}" onDrop="{{ handleDrop }}" style="border:2px dashed #c7c0ac; border-radius:12px; padding:44px 20px; text-align:center; cursor:pointer; background:#fbfaf6;">
+            <div style="font-size:34px; margin-bottom:10px;">&#128247;</div>
+            <div style="font-size:15px; font-weight:600; color:#2b2f27;">Drag & drop a photo or video</div>
+            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">or tap to choose a file</div>
+            <input ref="{{ fileInputRef }}" type="file" accept="image/*,video/*" onChange="{{ handleFileChange }}" style="display:none;"/>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isUploading }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid var(--border-soft2); border-radius:12px; padding:28px; background:var(--bg-card);">
+            <div style="font-size:14px; font-weight:600; margin-bottom:12px;">Uploading {{ uploadFileName }}&hellip;</div>
+            <div style="height:8px; border-radius:4px; background:#eee9dc; overflow:hidden;">
+              <div style="{{ progressBarStyle }}"></div>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary); margin-top:8px;">{{ uploadProgress }}%</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isProcessing }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid var(--border-soft2); border-radius:12px; padding:36px 28px; background:var(--bg-card); text-align:center;">
+            <div style="width:32px; height:32px; margin:0 auto 16px; border:3px solid #d8d2c2; border-top-color:#166534; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+            <div style="font-size:14px; font-weight:600;">Extracting frame &amp; scoring&hellip;</div>
+            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Sending still frame to BCS scoring service</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid var(--border-soft2); border-radius:12px; padding:24px; background:var(--bg-card);">
+            <div style="font-size:13px; font-weight:700; color:#166534; margin-bottom:16px;">&#10003; Reading saved to cow {{ uploadResultCowId }}</div>
+            <div style="display:flex; gap:20px; align-items:flex-start;">
+              <div style="{{ resultThumbStyle }}">
+                <sc-if value="{{ uploadIsVideo }}" hint-placeholder-val="{{ false }}">
+                  <div style="color:#fff; font-size:12px; text-align:center; padding:8px;">Extracted still frame</div>
+                </sc-if>
+              </div>
+              <div style="flex:1;">
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:4px;">BCS Score</div>
+                <div style="font-size:34px; font-weight:800; {{ resultScoreColorStyle }}">{{ uploadResultScore }}</div>
+                <div style="display:flex; gap:8px; margin-top:10px;">
+                  <span style="{{ resultBandStyle }}">{{ uploadResultBandLabel }}</span>
+                  <span style="{{ resultConfStyle }}">{{ uploadResultConfLabel }} confidence</span>
+                </div>
+                <sc-if value="{{ uploadResultFlagged }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:10px; font-size:12.5px; color:#b91c1c; font-weight:600;">&#9873; Flagged for review</div>
+                </sc-if>
+              </div>
+            </div>
+            <div style="display:flex; gap:12px; margin-top:22px;">
+              <button onClick="{{ uploadAnother }}" style="padding:10px 18px; border-radius:8px; border:1px solid var(--border-soft); background:var(--bg-card); font-size:14px; font-weight:600; cursor:pointer;">Upload another</button>
+              <button onClick="{{ viewUploadedCow }}" style="padding:10px 18px; border-radius:8px; border:none; background:#1c2a20; color:#fff; font-size:14px; font-weight:600; cursor:pointer;">View cow history</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isHerd }}" hint-placeholder-val="{{ false }}">
+      <div data-page style="padding:32px 28px 60px;">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+          <h1 style="font-size:22px; font-weight:700; margin:0; white-space:nowrap;">Herd Overview</h1>
+          <div style="font-size:13px; color:var(--text-secondary);">{{ herdCountLabel }}</div>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:22px;">
+          <input type="text" placeholder="Search cow ID&hellip;" value="{{ herdSearch }}" onChange="{{ setSearchHandler }}" style="padding:9px 14px; border-radius:8px; border:1px solid var(--border-soft); background:var(--bg-card); font-size:13.5px; width:160px;"/>
+          <sc-for list="{{ filterChips }}" as="chip" hint-placeholder-count="5">
+            <div onClick="{{ chip.onClick }}" style="{{ chip.style }}">{{ chip.label }}</div>
+          </sc-for>
+          <select value="{{ herdSort }}" onChange="{{ setSortHandler }}" style="margin-left:auto; padding:9px 12px; border-radius:8px; border:1px solid var(--border-soft); background:var(--bg-card); font-size:13.5px;">
+            <option value="recent">Sort: Most recently scored</option>
+            <option value="bcs-asc">Sort: BCS low to high</option>
+            <option value="bcs-desc">Sort: BCS high to low</option>
+            <option value="flagged">Sort: Flagged first</option>
+          </select>
+        </div>
+
+        <div data-part="grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:16px; margin-top:6px;">
+          <sc-for list="{{ herdCowsDisplay }}" as="cow" hint-placeholder-count="12">
+            <div onClick="{{ cow.openFn }}" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; cursor:pointer; position:relative;">
+              <div style="{{ cow.thumbStyle }}">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ffffffaa" stroke-width="1.6"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M8 6l1.5-2h5L16 6"/><circle cx="12" cy="12.5" r="3.6"/></svg>
+                <sc-if value="{{ cow.flagVisible }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute; top:8px; right:8px; background:#dc2626; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px;">&#9873;</div>
+                </sc-if>
+              </div>
+              <div style="padding:12px 14px 14px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <div style="font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1;">Cow {{ cow.id }}</div>
+                  <span style="{{ cow.badgeStyle }}">{{ cow.latestScore }}</span>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">{{ cow.band.label }} &middot; {{ cow.pen }}</div>
+                <div style="font-size:11.5px; color:var(--text-tertiary); margin-top:6px;">Last scored {{ cow.lastScoredLabel }}</div>
+                <sc-if value="{{ cow.sharpDrop }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:11.5px; color:#b91c1c; font-weight:700; margin-top:6px;">&#9660; Dropped {{ cow.dropAmount }} pts</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+      <div data-page style="padding:28px 28px 60px;">
+        <div onClick="{{ backToHerd }}" style="display:inline-flex; align-items:center; gap:6px; font-size:13px; color:#166534; cursor:pointer; font-weight:600; margin-bottom:18px;">&#8592; Back to herd</div>
+
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:22px;">
+          <div>
+            <h1 style="font-size:26px; font-weight:800; margin:0 0 6px;">Cow {{ selectedCow.id }}</h1>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <span style="{{ chipStyle }}">{{ selectedCow.breed }}</span>
+              <span style="{{ chipStyle }}">{{ selectedCow.lactation }} lactation</span>
+              <span style="{{ chipStyle }}">{{ selectedCow.pen }}</span>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px; color:var(--text-secondary);">Current BCS</div>
+            <div style="font-size:32px; font-weight:800; {{ selectedCow.currentScoreColorStyle }}">{{ selectedCow.latestScore }}</div>
+            <span style="{{ selectedCow.badgeStyle }}">{{ selectedCow.band.label }}</span>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:26px;">
+          <div style="font-size:14px; font-weight:700; margin-bottom:10px;">BCS Trend</div>
+          <svg viewBox="0 0 640 270" style="width:100%; height:auto; display:block;">
+            <rect x="50" y="151.25" width="570" height="78.75" fill="#fbeedd"/>
+            <rect x="50" y="85.625" width="570" height="65.625" fill="#e6f2e8"/>
+            <rect x="50" y="20" width="570" height="65.625" fill="#e8edfc"/>
+            <text x="44" y="234" text-anchor="end" font-size="11" fill="var(--text-tertiary)">1.0</text>
+            <text x="44" y="155" text-anchor="end" font-size="11" fill="var(--text-tertiary)">2.5</text>
+            <text x="44" y="89" text-anchor="end" font-size="11" fill="var(--text-tertiary)">3.75</text>
+            <text x="44" y="24" text-anchor="end" font-size="11" fill="var(--text-tertiary)">5.0</text>
+            <polyline points="{{ selectedCow.trendPoints }}" fill="none" stroke="#1c2a20" stroke-width="2.5"/>
+            <sc-for list="{{ selectedCow.chartPoints }}" as="pt" hint-placeholder-count="4">
+              <circle cx="{{ pt.x }}" cy="{{ pt.y }}" r="5.5" fill="{{ pt.color }}" stroke="#fff" stroke-width="1.5"/>
+              <text x="{{ pt.x }}" y="252" text-anchor="middle" font-size="10.5" fill="var(--text-secondary)">{{ pt.dateShort }}</text>
+            </sc-for>
+          </svg>
+        </div>
+
+        <div style="font-size:14px; font-weight:700; margin-bottom:10px;">Reading History</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <sc-for list="{{ selectedCow.historyDesc }}" as="r" hint-placeholder-count="4">
+            <div data-row="history-item" onClick="{{ r.openModalFn }}" style="display:flex; align-items:center; gap:14px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; cursor:pointer;">
+              <div style="{{ r.thumbStyle }}"></div>
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:13.5px; font-weight:600;">{{ r.dateLabel }}</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">{{ r.reasonLabel }}</div>
+              </div>
+              <span style="{{ r.confStyle }}">{{ r.confidence }}</span>
+              <sc-if value="{{ r.flagged }}" hint-placeholder-val="{{ false }}">
+                <span style="color:#dc2626; font-size:15px;">&#9873;</span>
+              </sc-if>
+              <span style="{{ r.badgeStyle }}">{{ r.score }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isReview }}" hint-placeholder-val="{{ false }}">
+      <div data-page style="padding:32px 28px 60px;">
+        <h1 style="font-size:22px; font-weight:700; margin:0 0 4px;">Review Queue</h1>
+        <p style="font-size:14px; color:var(--text-secondary); margin:0 0 22px;">Readings needing a quick human check &mdash; low confidence or a sharp score change.</p>
+
+        <sc-if value="{{ hasReviewHistory }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:22px;">
+            <div style="font-size:12.5px; font-weight:700; color:#5c5748; margin-bottom:12px;">Algorithm performance &mdash; how often staff override the model</div>
+            <div style="display:flex; flex-wrap:wrap; gap:22px;">
+              <sc-for list="{{ reviewStats }}" as="stat" hint-placeholder-count="6">
+                <div>
+                  <div style="font-size:20px; font-weight:800;">{{ stat.value }}</div>
+                  <div style="font-size:11.5px; color:var(--text-secondary);">{{ stat.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ reviewEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--bg-card); border:1px dashed #d8d2c2; border-radius:12px; padding:40px; text-align:center; color:var(--text-secondary); font-size:14px;">Queue is clear &mdash; nothing needs review right now.</div>
+        </sc-if>
+
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <sc-for list="{{ reviewItemsDisplay }}" as="item" hint-placeholder-count="4">
+            <div data-row="review-item" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px; display:flex; gap:16px; align-items:center;">
+              <div style="{{ item.thumbStyle }}"></div>
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:14.5px; font-weight:700;">Cow {{ item.cowId }}</div>
+                <div style="font-size:12.5px; color:var(--text-secondary); margin-top:2px;">{{ item.dateLabel }}</div>
+                <div style="font-size:12.5px; color:#b45309; font-weight:600; margin-top:4px;">{{ item.reasonLabel }}</div>
+              </div>
+              <span style="{{ item.confStyle }}">{{ item.confidence }}</span>
+
+              <sc-if value="{{ item.isEditing }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <button onClick="{{ item.decFn }}" style="width:30px; height:30px; border-radius:6px; border:1px solid var(--border-soft); background:var(--stepper-bg); font-size:16px; cursor:pointer;">&minus;</button>
+                  <div style="font-size:18px; font-weight:800; min-width:44px; text-align:center;">{{ item.tempScore }}</div>
+                  <button onClick="{{ item.incFn }}" style="width:30px; height:30px; border-radius:6px; border:1px solid var(--border-soft); background:var(--stepper-bg); font-size:16px; cursor:pointer;">+</button>
+                  <button onClick="{{ item.confirmFn }}" style="padding:8px 14px; border-radius:7px; border:none; background:#1c2a20; color:#fff; font-size:13px; font-weight:700; cursor:pointer;">Confirm</button>
+                  <button onClick="{{ item.cancelFn }}" style="padding:8px 12px; border-radius:7px; border:1px solid var(--border-soft); background:var(--bg-card); font-size:13px; cursor:pointer;">Cancel</button>
+                </div>
+              </sc-if>
+              <div style="{{ item.actionsWrapStyle }}">
+                <span style="{{ item.badgeStyle }}">{{ item.score }}</span>
+                <button onClick="{{ item.approveFn }}" style="padding:8px 14px; border-radius:7px; border:1px solid #166534; background:var(--bg-card); color:#166534; font-size:13px; font-weight:700; cursor:pointer;">Approve</button>
+                <button onClick="{{ item.overrideFn }}" style="padding:8px 14px; border-radius:7px; border:1px solid var(--border-soft); background:var(--bg-card); font-size:13px; font-weight:600; cursor:pointer;">Override</button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isAudit }}" hint-placeholder-val="{{ false }}">
+      <div data-page style="padding:32px 28px 60px;">
+        <h1 style="font-size:22px; font-weight:700; margin:0 0 4px;">Audit Log</h1>
+        <p style="font-size:14px; color:var(--text-secondary); margin:0 0 22px;">Every approval and override, kept for future model training and accuracy review.</p>
+
+        <sc-if value="{{ auditEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--bg-card); border:1px dashed #d8d2c2; border-radius:12px; padding:40px; text-align:center; color:var(--text-secondary); font-size:14px;">No review decisions logged yet.</div>
+        </sc-if>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <sc-for list="{{ auditLogDisplay }}" as="entry" hint-placeholder-count="6">
+            <div data-row="history-item" style="display:flex; align-items:center; gap:14px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 14px;">
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:13.5px; font-weight:700;">Cow {{ entry.cowId }}</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">{{ entry.dateLabel }}</div>
+              </div>
+              <span style="{{ entry.actionStyle }}">{{ entry.actionLabel }}</span>
+              <div style="font-size:13px; color:#5c5748; min-width:120px; text-align:right;">{{ entry.scoreChangeLabel }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isUsersScreen }}" hint-placeholder-val="{{ false }}">
+      <div data-page style="padding:32px 28px 60px;">
+        <h1 style="font-size:22px; font-weight:700; margin:0 0 4px;">User Management</h1>
+        <p style="font-size:14px; color:var(--text-secondary); margin:0 0 22px;">Invite staff by mobile number and manage roles. Admin-only.</p>
+
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:24px;">
+          <div style="font-size:13px; font-weight:700; margin-bottom:12px;">Invite a user</div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <input type="tel" placeholder="Mobile number" value="{{ inviteMobile }}" onChange="{{ setInviteMobile }}" style="flex:1; min-width:160px; padding:10px 12px; border-radius:8px; border:1px solid var(--border-soft); font-size:14px;"/>
+            <select value="{{ inviteRole }}" onChange="{{ setInviteRole }}" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border-soft); font-size:14px; background:var(--bg-card);">
+              <sc-for list="{{ roleOptions }}" as="ro" hint-placeholder-count="2">
+                <option value="{{ ro.key }}">{{ ro.label }}</option>
+              </sc-for>
+            </select>
+            <button onClick="{{ sendInvite }}" style="padding:10px 18px; border-radius:8px; border:none; background:#1c2a20; color:#fff; font-size:14px; font-weight:700; cursor:pointer;">Send invite</button>
+          </div>
+          <sc-if value="{{ inviteError }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#fbe4e4; color:#b91c1c; font-size:13px; padding:9px 12px; border-radius:8px; margin-top:12px;">{{ inviteError }}</div>
+          </sc-if>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <sc-for list="{{ usersDisplay }}" as="u" hint-placeholder-count="4">
+            <div style="display:flex; align-items:center; gap:14px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 16px; flex-wrap:wrap;">
+              <div style="flex:1; min-width:140px;">
+                <div style="font-size:14px; font-weight:700;">{{ u.name }}</div>
+                <div style="font-size:12.5px; color:var(--text-secondary); margin-top:2px;">{{ u.mobile }}</div>
+              </div>
+              <span style="{{ u.statusStyle }}">{{ u.statusLabel }}</span>
+              <select value="{{ u.role }}" onChange="{{ u.changeRoleFn }}" style="padding:8px 10px; border-radius:7px; border:1px solid var(--border-soft); font-size:13px; background:var(--bg-card);">
+                <sc-for list="{{ roleOptions }}" as="ro" hint-placeholder-count="2">
+                  <option value="{{ ro.key }}">{{ ro.label }}</option>
+                </sc-for>
+              </select>
+              <button onClick="{{ u.removeFn }}" style="padding:8px 14px; border-radius:7px; border:1px solid var(--border-soft); background:var(--bg-card); color:#b91c1c; font-size:13px; font-weight:600; cursor:pointer;">Remove</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ modalReading }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeModal }}" style="position:fixed; inset:0; background:#000000cc; display:flex; align-items:center; justify-content:center; z-index:50;">
+      <div onClick="{{ stopProp }}" style="background:var(--bg-card); border-radius:14px; padding:22px; width:420px; max-width:90vw;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <div style="font-size:15px; font-weight:700;">Cow {{ modalReading.cowId }} &middot; {{ modalReading.dateLabel }}</div>
+          <div onClick="{{ closeModal }}" style="cursor:pointer; font-size:18px; color:var(--text-secondary);">&times;</div>
+        </div>
+        <div style="{{ modalReading.bigThumbStyle }}"></div>
+        <div style="display:flex; gap:10px; margin-top:14px;">
+          <span style="{{ modalReading.badgeStyle }}">BCS {{ modalReading.score }}</span>
+          <span style="{{ modalReading.confStyle }}">{{ modalReading.confidence }} confidence</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.fileInputRef = React.createRef();
+    this.timers = [];
+    this.ROLES = {
+      admin: { label: 'Admin', manageUsers: true },
+      staff: { label: 'Staff', manageUsers: false },
+    };
+    this.THEMES = {
+      light: { '--bg-page': '#f6f5f0', '--bg-card': '#ffffff', '--border': '#e5e0d3', '--border-soft': '#d8d2c2', '--border-soft2': '#e2ddd0', '--text-primary': '#20241f', '--text-secondary': '#82796a', '--text-tertiary': '#9a9280', '--chip-bg': '#efece1', '--scrollbar': '#cfc9ba', '--stepper-bg': '#f6f5f0' },
+      dark: { '--bg-page': '#14170f', '--bg-card': '#1e231b', '--border': '#333a2c', '--border-soft': '#3a4432', '--border-soft2': '#333a2c', '--text-primary': '#eee8d8', '--text-secondary': '#a39c86', '--text-tertiary': '#8a8370', '--chip-bg': '#262b21', '--scrollbar': '#3a4432', '--stepper-bg': '#20241f' },
+    };
+    this.state = {
+      theme: 'light',
+      loggedIn: false,
+      authStage: 'mobile',
+      authMobile: '',
+      authCode: '',
+      authError: null,
+      currentRole: 'admin',
+      users: this.generateSampleUsers(),
+      inviteMobile: '',
+      inviteRole: 'staff',
+      inviteError: null,
+      screen: 'herd',
+      selectedCowId: null,
+      cows: (this.__cows = this.generateCows()),
+      resolvedIds: [],
+      herdFilter: 'all',
+      herdSort: 'recent',
+      herdSearch: '',
+      uploadCowId: '',
+      uploadStage: 'idle',
+      uploadProgress: 0,
+      uploadFileName: '',
+      uploadPreviewUrl: null,
+      uploadIsVideo: false,
+      uploadError: null,
+      uploadResult: null,
+      uploadResultCowId: null,
+      reviewEditingId: null,
+      reviewTempScore: 0,
+      modalReading: null,
+      reviewLog: this.generateSampleAuditLog(this.__cows),
+    };
+  }
+
+  componentWillUnmount() { this.timers.forEach(t => clearTimeout(t)); }
+
+  mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  roundQuarter(n) { return Math.round(n * 4) / 4; }
+
+  bandFor(score) {
+    if (score < 2.5) return { key: 'thin', label: 'Too thin', color: '#b45309', bg: '#fbeedd' };
+    if (score <= 3.75) return { key: 'ideal', label: 'Ideal', color: '#166534', bg: '#e6f2e8' };
+    return { key: 'heavy', label: 'Too heavy', color: '#1d4ed8', bg: '#e8edfc' };
+  }
+
+  confStyleFor(conf) {
+    const map = {
+      high: { color: '#ffffff', background: '#166534' },
+      medium: { color: '#ffffff', background: '#a35a05' },
+      low: { color: '#ffffff', background: '#b91c1c' },
+    };
+    const c = map[conf] || map.high;
+    return { ...c, fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', textTransform: 'capitalize' };
+  }
+
+  badgeStyleFor(score, extra) {
+    const b = this.bandFor(score);
+    return { color: '#ffffff', background: b.color, fontSize: '13.5px', fontWeight: 800, padding: '4px 11px', borderRadius: '999px', flexShrink: 0, whiteSpace: 'nowrap', ...extra };
+  }
+
+  thumbGradientFor(seed) {
+    const grads = [
+      'linear-gradient(135deg,#7c9b85,#4f6b57)',
+      'linear-gradient(135deg,#a68a6b,#6e5641)',
+      'linear-gradient(135deg,#8a8f76,#565c47)',
+      'linear-gradient(135deg,#6f8b9b,#3f5866)',
+      'linear-gradient(135deg,#9b8a6f,#5c4d33)',
+      'linear-gradient(135deg,#7a7c8e,#454759)',
+    ];
+    let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+    return grads[h % grads.length];
+  }
+
+  fmtDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' \u00b7 ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  fmtDateShort(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  daysAgoLabel(iso) {
+    const d = new Date(iso); const now = new Date('2026-07-15T18:00:00');
+    const diff = Math.round((now - d) / 86400000);
+    if (diff <= 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    return diff + ' days ago';
+  }
+
+  generateCows() {
+    const rand = this.mulberry32(20260715);
+    const breeds = ['Holstein', 'Jersey', 'Holstein-Jersey Cross'];
+    const lacts = ['Early', 'Mid', 'Late', 'Dry'];
+    const pens = ['Pen 1', 'Pen 2', 'Pen 3', 'Fresh Pen'];
+    const now = new Date('2026-07-15T06:30:00');
+    const cows = [];
+    const usedIds = new Set();
+    for (let i = 0; i < 22; i++) {
+      let id;
+      do { id = String(1000 + Math.floor(rand() * 8999)); } while (usedIds.has(id));
+      usedIds.add(id);
+      const readingCount = 3 + Math.floor(rand() * 3);
+      let score = this.roundQuarter(2.5 + rand() * 1.75);
+      const readings = [];
+      let dayOffset = readingCount * 14 + Math.floor(rand() * 6);
+      const forceSharp = rand() < 0.22;
+      const forceFlag = rand() < 0.22;
+      for (let r = 0; r < readingCount; r++) {
+        const isLast = r === readingCount - 1;
+        let delta = (rand() - 0.5) * 1.0;
+        if (isLast && forceSharp) delta = -(0.5 + rand() * 0.75);
+        score = this.roundQuarter(Math.min(5, Math.max(1, score + delta)));
+        const dt = new Date(now.getTime() - dayOffset * 86400000);
+        dt.setHours(rand() < 0.5 ? 6 + Math.floor(rand() * 2) : 16 + Math.floor(rand() * 2), Math.floor(rand() * 60));
+        dayOffset -= (10 + Math.floor(rand() * 8));
+        if (dayOffset < 0) dayOffset = 0;
+        const confRoll = rand();
+        let confidence = confRoll < 0.68 ? 'high' : confRoll < 0.87 ? 'medium' : 'low';
+        if (isLast && forceFlag && confidence === 'high') confidence = 'medium';
+        const flagged = confidence === 'low' || (confidence === 'medium' && rand() < 0.4);
+        readings.push({
+          id: id + '-' + r,
+          date: dt.toISOString(),
+          score,
+          confidence,
+          flagged,
+        });
+      }
+      cows.push({
+        id, breed: breeds[Math.floor(rand() * breeds.length)],
+        lactation: lacts[Math.floor(rand() * lacts.length)],
+        pen: pens[Math.floor(rand() * pens.length)],
+        readings,
+      });
+    }
+    return cows;
+  }
+
+  generateSampleUsers() {
+    return [
+      { id: 'u1', name: 'Maria Santos', mobile: '+1 555 201 4471', role: 'admin', status: 'active' },
+      { id: 'u2', name: 'Dale Kirchner', mobile: '+1 555 201 9032', role: 'staff', status: 'active' },
+      { id: 'u3', name: 'Pending invite', mobile: '+1 555 201 5567', role: 'staff', status: 'pending' },
+    ];
+  }
+
+  generateSampleAuditLog(cows) {
+    const rand = this.mulberry32(4471);
+    const now = new Date('2026-07-15T09:00:00');
+    const entries = [];
+    const count = 16;
+    for (let i = 0; i < count; i++) {
+      const cow = cows[Math.floor(rand() * cows.length)];
+      const readings = [...cow.readings].sort((a, b) => new Date(a.date) - new Date(b.date));
+      const reading = readings[Math.floor(rand() * readings.length)];
+      const daysAgo = 3 + Math.floor(rand() * 58);
+      const dt = new Date(now.getTime() - daysAgo * 86400000);
+      dt.setHours(6 + Math.floor(rand() * 10), Math.floor(rand() * 60));
+      const overridden = rand() < 0.3;
+      const oldScore = reading.score;
+      const newScore = overridden ? this.roundQuarter(Math.min(5, Math.max(1, oldScore + (rand() - 0.5) * 1.0))) : oldScore;
+      entries.push({ cowId: cow.id, readingId: reading.id + '-log' + i, date: dt.toISOString(), action: overridden ? 'overridden' : 'approved', oldScore, newScore });
+    }
+    entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+    return entries;
+  }
+
+  computeDerived(cow) {
+    const readings = [...cow.readings].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const latest = readings[readings.length - 1];
+    const prev = readings[readings.length - 2];
+    const sharpDrop = !!(prev && (prev.score - latest.score) >= 0.5);
+    return { readings, latest, prev, sharpDrop };
+  }
+
+  addReadingToCow(cowId, reading) {
+    this.setState(s => {
+      let cows = s.cows;
+      const idx = cows.findIndex(c => c.id === cowId);
+      if (idx === -1) {
+        cows = [...cows, { id: cowId, breed: 'Unknown', lactation: 'Unknown', pen: 'Unassigned', readings: [reading] }];
+      } else {
+        cows = cows.map((c, i) => i === idx ? { ...c, readings: [...c.readings, reading] } : c);
+      }
+      return { cows };
+    });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const navBase = { padding: '10px 12px', borderRadius: '8px', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', color: '#eee8d8' };
+    const navActive = { ...navBase, background: '#33443a' };
+    const isUpload = s.screen === 'upload', isHerd = s.screen === 'herd', isDetail = s.screen === 'detail', isReview = s.screen === 'review', isAudit = s.screen === 'audit';
+    const isUsersScreen = s.screen === 'users';
+    const isAdmin = !!(this.ROLES[s.currentRole] && this.ROLES[s.currentRole].manageUsers);
+    const roleOptions = Object.keys(this.ROLES).map(key => ({ key, label: this.ROLES[key].label }));
+
+    const allDerived = s.cows.map(c => ({ cow: c, d: this.computeDerived(c) }));
+    const flaggedReadings = [];
+    allDerived.forEach(({ cow, d }) => {
+      if (d.latest && (d.latest.flagged || d.sharpDrop) && !s.resolvedIds.includes(d.latest.id)) {
+        flaggedReadings.push({ cow, reading: d.latest, prev: d.prev, sharpDrop: d.sharpDrop });
+      }
+    });
+    const flaggedCount = flaggedReadings.length;
+
+    // Herd overview
+    let herdCowsDisplay = allDerived.map(({ cow, d }) => {
+      const latest = d.latest;
+      const band = this.bandFor(latest.score);
+      const flagVisible = latest.flagged || d.sharpDrop;
+      return {
+        id: cow.id, pen: cow.pen, band,
+        latestScore: latest.score.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0'),
+        latestScoreNum: latest.score,
+        lastScoredLabel: this.daysAgoLabel(latest.date),
+        lastScoredDate: latest.date,
+        flagVisible, sharpDrop: d.sharpDrop,
+        dropAmount: d.sharpDrop ? (d.prev.score - latest.score).toFixed(2) : null,
+        thumbStyle: { background: this.thumbGradientFor(cow.id), height: '92px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' },
+        badgeStyle: this.badgeStyleFor(latest.score),
+        openFn: () => this.setState({ screen: 'detail', selectedCowId: cow.id }),
+      };
+    });
+    if (s.herdSearch.trim()) herdCowsDisplay = herdCowsDisplay.filter(c => c.id.includes(s.herdSearch.trim()));
+    if (s.herdFilter === 'flagged') herdCowsDisplay = herdCowsDisplay.filter(c => c.flagVisible);
+    else if (s.herdFilter !== 'all') herdCowsDisplay = herdCowsDisplay.filter(c => c.band.key === s.herdFilter);
+    if (s.herdSort === 'bcs-asc') herdCowsDisplay.sort((a, b) => a.latestScoreNum - b.latestScoreNum);
+    else if (s.herdSort === 'bcs-desc') herdCowsDisplay.sort((a, b) => b.latestScoreNum - a.latestScoreNum);
+    else if (s.herdSort === 'flagged') herdCowsDisplay.sort((a, b) => (b.flagVisible ? 1 : 0) - (a.flagVisible ? 1 : 0));
+    else herdCowsDisplay.sort((a, b) => new Date(b.lastScoredDate) - new Date(a.lastScoredDate));
+
+    const chipBase = { padding: '8px 14px', borderRadius: '999px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', border: '1px solid var(--border-soft)', background: 'var(--bg-card)', color: 'var(--text-primary)' };
+    const chipActive = { ...chipBase, background: '#1c2a20', color: '#fff', border: '1px solid #1c2a20' };
+    const filterDefs = [
+      { key: 'all', label: 'All' }, { key: 'flagged', label: 'Flagged' },
+      { key: 'thin', label: 'Too thin' }, { key: 'ideal', label: 'Ideal' }, { key: 'heavy', label: 'Too heavy' },
+    ];
+    const filterChips = filterDefs.map(f => ({
+      label: f.label, style: s.herdFilter === f.key ? chipActive : chipBase,
+      onClick: () => this.setState({ herdFilter: f.key }),
+    }));
+
+    // Detail
+    let selectedCow = null;
+    if (s.selectedCowId) {
+      const found = allDerived.find(a => a.cow.id === s.selectedCowId);
+      if (found) {
+        const { cow, d } = found;
+        const readingsAsc = d.readings;
+        const n = readingsAsc.length;
+        const chartPoints = readingsAsc.map((r, i) => {
+          const x = n === 1 ? 335 : 60 + (i / (n - 1)) * 550;
+          const y = 230 - (r.score - 1) * 52.5;
+          return { x, y, color: this.bandFor(r.score).color, dateShort: this.fmtDateShort(r.date) };
+        });
+        const trendPoints = chartPoints.map(p => p.x + ',' + p.y).join(' ');
+        const historyDesc = [...readingsAsc].reverse().map(r => ({
+          dateLabel: this.fmtDate(r.date),
+          score: r.score.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0'),
+          confidence: r.confidence,
+          flagged: r.flagged,
+          reasonLabel: r.flagged ? 'Flagged \u2014 ' + r.confidence + ' confidence' : 'Confirmed',
+          badgeStyle: this.badgeStyleFor(r.score, { minWidth: '44px', textAlign: 'center' }),
+          confStyle: this.confStyleFor(r.confidence),
+          thumbStyle: { width: '52px', height: '52px', borderRadius: '8px', background: this.thumbGradientFor(cow.id + r.id), flexShrink: 0 },
+          openModalFn: () => this.setState({
+            modalReading: {
+              cowId: cow.id, dateLabel: this.fmtDate(r.date), score: r.score.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0'),
+              confidence: r.confidence, badgeStyle: this.badgeStyleFor(r.score), confStyle: this.confStyleFor(r.confidence),
+              bigThumbStyle: { width: '100%', height: '260px', borderRadius: '10px', background: this.thumbGradientFor(cow.id + r.id) },
+            }
+          }),
+        }));
+        selectedCow = {
+          id: cow.id, breed: cow.breed, lactation: cow.lactation, pen: cow.pen,
+          latestScore: d.latest.score.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0'),
+          band: this.bandFor(d.latest.score),
+          badgeStyle: this.badgeStyleFor(d.latest.score),
+          currentScoreColorStyle: { color: this.bandFor(d.latest.score).color },
+          chartPoints, trendPoints, historyDesc,
+        };
+      }
+    }
+
+    // Review queue
+    const reviewItemsDisplay = flaggedReadings.map(({ cow, reading, prev, sharpDrop }) => {
+      const editing = s.reviewEditingId === reading.id;
+      const reasonParts = [];
+      if (reading.flagged) reasonParts.push(reading.confidence + ' confidence score');
+      if (sharpDrop) reasonParts.push('dropped ' + (prev.score - reading.score).toFixed(2) + ' pts since last reading');
+      return {
+        id: reading.id, cowId: cow.id, dateLabel: this.fmtDate(reading.date),
+        reasonLabel: reasonParts.join(' + '),
+        confidence: reading.confidence, confStyle: this.confStyleFor(reading.confidence),
+        score: reading.score.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0'),
+        badgeStyle: this.badgeStyleFor(reading.score),
+        thumbStyle: { width: '58px', height: '58px', borderRadius: '10px', background: this.thumbGradientFor(cow.id + reading.id), flexShrink: 0 },
+        isEditing: editing,
+        tempScore: editing ? s.reviewTempScore.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0') : null,
+        actionsWrapStyle: { display: editing ? 'none' : 'flex', alignItems: 'center', gap: '10px' },
+        approveFn: () => this.setState(st => ({
+          resolvedIds: [...st.resolvedIds, reading.id],
+          reviewLog: [...st.reviewLog, { cowId: cow.id, readingId: reading.id, date: new Date().toISOString(), action: 'approved', oldScore: reading.score, newScore: reading.score }],
+        })),
+        overrideFn: () => this.setState({ reviewEditingId: reading.id, reviewTempScore: reading.score }),
+        decFn: () => this.setState(st => ({ reviewTempScore: Math.max(1, this.roundQuarter(st.reviewTempScore - 0.25)) })),
+        incFn: () => this.setState(st => ({ reviewTempScore: Math.min(5, this.roundQuarter(st.reviewTempScore + 0.25)) })),
+        cancelFn: () => this.setState({ reviewEditingId: null }),
+        confirmFn: () => {
+          const newScore = this.state.reviewTempScore;
+          const oldScore = reading.score;
+          this.setState(st => ({
+            cows: st.cows.map(c => c.id === cow.id ? { ...c, readings: c.readings.map(r => r.id === reading.id ? { ...r, score: newScore, flagged: false } : r) } : c),
+            resolvedIds: [...st.resolvedIds, reading.id],
+            reviewEditingId: null,
+            reviewLog: [...st.reviewLog, { cowId: cow.id, readingId: reading.id, date: new Date().toISOString(), action: 'overridden', oldScore, newScore }],
+          }));
+        },
+      };
+    });
+
+    const chipStyle = { fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)', background: 'var(--chip-bg)', padding: '5px 11px', borderRadius: '999px' };
+    const rootStyle = {
+      ...this.THEMES[s.theme],
+      display: 'flex', height: '100vh', width: '100vw',
+      fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif",
+      background: 'var(--bg-page)', color: 'var(--text-primary)', overflow: 'hidden',
+    };
+
+    const usersDisplay = s.users.map(u => ({
+      id: u.id, name: u.name, mobile: u.mobile, role: u.role,
+      statusLabel: u.status === 'active' ? 'Active' : 'Pending',
+      statusStyle: u.status === 'active'
+        ? { color: '#166534', background: '#e6f2e8', fontSize: '11.5px', fontWeight: 700, padding: '4px 10px', borderRadius: '999px' }
+        : { color: '#92600a', background: '#fdf3d9', fontSize: '11.5px', fontWeight: 700, padding: '4px 10px', borderRadius: '999px' },
+      changeRoleFn: (e) => { const newRole = e.target.value; this.setState(st => ({ users: st.users.map(x => x.id === u.id ? { ...x, role: newRole } : x) })); },
+      removeFn: () => this.setState(st => ({ users: st.users.filter(x => x.id !== u.id) })),
+    }));
+
+    const overriddenEntries = s.reviewLog.filter(l => l.action === 'overridden');
+    const cowsOverridden = new Set(overriddenEntries.map(l => l.cowId)).size;
+    const totalReviewed = s.reviewLog.length;
+    const overrideRate = totalReviewed ? Math.round((overriddenEntries.length / totalReviewed) * 100) : 0;
+    const avgAdjust = overriddenEntries.length
+      ? (overriddenEntries.reduce((sum, l) => sum + Math.abs(l.newScore - l.oldScore), 0) / overriddenEntries.length).toFixed(2)
+      : '0.00';
+    const auditLogDisplay = [...s.reviewLog].reverse().map(l => ({
+      cowId: l.cowId,
+      dateLabel: this.fmtDate(l.date),
+      actionLabel: l.action === 'overridden' ? 'Overridden' : 'Approved',
+      actionStyle: l.action === 'overridden'
+        ? { color: '#b45309', background: '#fdf1de', fontSize: '11.5px', fontWeight: 700, padding: '4px 9px', borderRadius: '999px' }
+        : { color: '#166534', background: '#e6f2e8', fontSize: '11.5px', fontWeight: 700, padding: '4px 9px', borderRadius: '999px' },
+      scoreChangeLabel: l.action === 'overridden'
+        ? l.oldScore.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0') + ' \u2192 ' + l.newScore.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0')
+        : 'Confirmed ' + l.oldScore.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0'),
+    }));
+
+    const reviewStats = [
+      { label: 'Reviewed', value: totalReviewed },
+      { label: 'Approved', value: totalReviewed - overriddenEntries.length },
+      { label: 'Overridden', value: overriddenEntries.length },
+      { label: 'Cows w/ override', value: cowsOverridden },
+      { label: 'Override rate', value: overrideRate + '%' },
+      { label: 'Avg adjustment', value: avgAdjust + ' pts' },
+    ];
+
+    return {
+      rootStyle, theme: s.theme, isDark: s.theme === 'dark',
+      toggleTheme: () => this.setState(st => ({ theme: st.theme === 'dark' ? 'light' : 'dark' })),
+      themeLabel: s.theme === 'dark' ? 'Dark mode' : 'Light mode',
+      themeIcon: s.theme === 'dark' ? '\u263E' : '\u2600',
+      isUpload, isHerd, isDetail, isReview,
+      navUploadStyle: isUpload ? navActive : navBase,
+      navHerdStyle: (isHerd || isDetail) ? navActive : navBase,
+      navReviewStyle: { ...(isReview ? navActive : navBase), position: 'relative' },
+      navAuditStyle: isAudit ? navActive : navBase,
+      navUsersStyle: isUsersScreen ? navActive : navBase,
+      isAudit, goAudit: () => this.setState({ screen: 'audit' }),
+      auditEmpty: s.reviewLog.length === 0,
+      auditLogDisplay,
+
+      isLoggedOut: !s.loggedIn, isLoggedIn: s.loggedIn,
+      isAuthMobileStage: s.authStage === 'mobile', isAuthOtpStage: s.authStage === 'otp',
+      authMobile: s.authMobile, authCode: s.authCode, authError: s.authError,
+      setAuthMobile: (e) => this.setState({ authMobile: e.target.value, authError: null }),
+      setAuthCode: (e) => this.setState({ authCode: e.target.value, authError: null }),
+      sendCode: () => {
+        if (!s.authMobile.trim()) { this.setState({ authError: 'Enter a mobile number.' }); return; }
+        this.setState({ authStage: 'otp', authError: null });
+      },
+      verifyCode: () => {
+        if (!/^\d{4,6}$/.test(s.authCode.trim())) { this.setState({ authError: 'Enter the 4-6 digit code.' }); return; }
+        this.setState({ loggedIn: true, authError: null });
+      },
+      backToMobile: () => this.setState({ authStage: 'mobile', authCode: '', authError: null }),
+      logOut: () => this.setState({ loggedIn: false, authStage: 'mobile', authMobile: '', authCode: '', screen: 'herd' }),
+
+      isAdmin, roleOptions, currentRole: s.currentRole,
+      setRole: (e) => {
+        const newRole = e.target.value;
+        this.setState(st => ({
+          currentRole: newRole,
+          screen: (st.screen === 'users' && !(this.ROLES[newRole] && this.ROLES[newRole].manageUsers)) ? 'herd' : st.screen,
+        }));
+      },
+      isUsersScreen, goUsers: () => this.setState({ screen: 'users' }),
+      usersDisplay,
+      inviteMobile: s.inviteMobile, inviteRole: s.inviteRole, inviteError: s.inviteError,
+      setInviteMobile: (e) => this.setState({ inviteMobile: e.target.value, inviteError: null }),
+      setInviteRole: (e) => this.setState({ inviteRole: e.target.value }),
+      sendInvite: () => {
+        if (!s.inviteMobile.trim()) { this.setState({ inviteError: 'Enter a mobile number to invite.' }); return; }
+        this.setState(st => ({
+          users: [...st.users, { id: 'u' + Date.now(), name: 'Pending invite', mobile: st.inviteMobile.trim(), role: st.inviteRole, status: 'pending' }],
+          inviteMobile: '', inviteError: null,
+        }));
+      },
+      hasFlagged: flaggedCount > 0, flaggedCount,
+      goUpload: () => this.setState({ screen: 'upload' }),
+      goHerd: () => this.setState({ screen: 'herd', selectedCowId: null }),
+      goReview: () => this.setState({ screen: 'review' }),
+      backToHerd: () => this.setState({ screen: 'herd', selectedCowId: null }),
+
+      // upload
+      uploadCowId: s.uploadCowId,
+      setUploadCowId: (e) => this.setState({ uploadCowId: e.target.value }),
+      uploadError: s.uploadError,
+      isIdle: s.uploadStage === 'idle',
+      isUploading: s.uploadStage === 'uploading',
+      isProcessing: s.uploadStage === 'processing',
+      isDone: s.uploadStage === 'done',
+      fileInputRef: this.fileInputRef,
+      openFilePicker: () => this.fileInputRef.current && this.fileInputRef.current.click(),
+      preventDefault: (e) => e.preventDefault(),
+      handleDrop: (e) => { e.preventDefault(); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) this.handleFile(f); },
+      handleFileChange: (e) => { const f = e.target.files && e.target.files[0]; if (f) this.handleFile(f); },
+      uploadFileName: s.uploadFileName,
+      uploadProgress: s.uploadProgress,
+      progressBarStyle: { height: '100%', width: s.uploadProgress + '%', background: '#166534', transition: 'width 0.15s' },
+      uploadPreviewUrl: s.uploadPreviewUrl,
+      uploadIsVideo: s.uploadIsVideo,
+      resultThumbStyle: s.uploadPreviewUrl
+        ? { width: '140px', height: '140px', borderRadius: '10px', backgroundImage: 'url(' + s.uploadPreviewUrl + ')', backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+        : { width: '140px', height: '140px', borderRadius: '10px', background: this.thumbGradientFor(s.uploadCowId || 'x'), flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+      uploadResultCowId: s.uploadResultCowId,
+      uploadResultScore: s.uploadResult ? s.uploadResult.score.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0') : '',
+      resultScoreColorStyle: s.uploadResult ? { color: this.bandFor(s.uploadResult.score).color } : {},
+      resultBandStyle: s.uploadResult ? this.badgeStyleFor(s.uploadResult.score) : {},
+      uploadResultBandLabel: s.uploadResult ? this.bandFor(s.uploadResult.score).label : '',
+      resultConfStyle: s.uploadResult ? this.confStyleFor(s.uploadResult.confidence) : {},
+      uploadResultConfLabel: s.uploadResult ? s.uploadResult.confidence : '',
+      uploadResultFlagged: s.uploadResult ? s.uploadResult.flagged : false,
+      uploadAnother: () => {
+        if (s.uploadPreviewUrl) URL.revokeObjectURL(s.uploadPreviewUrl);
+        if (this.fileInputRef.current) this.fileInputRef.current.value = '';
+        this.setState({ uploadStage: 'idle', uploadProgress: 0, uploadFileName: '', uploadPreviewUrl: null, uploadIsVideo: false, uploadError: null, uploadResult: null, uploadCowId: '' });
+      },
+      viewUploadedCow: () => this.setState({ screen: 'detail', selectedCowId: s.uploadResultCowId }),
+
+      // herd
+      herdCountLabel: herdCowsDisplay.length + ' of ' + s.cows.length + ' cows shown',
+      filterChips, herdSort: s.herdSort,
+      setSortHandler: (e) => this.setState({ herdSort: e.target.value }),
+      herdSearch: s.herdSearch,
+      setSearchHandler: (e) => this.setState({ herdSearch: e.target.value }),
+      herdCowsDisplay,
+
+      // detail
+      selectedCow, chipStyle,
+
+      // review
+      reviewEmpty: reviewItemsDisplay.length === 0,
+      reviewItemsDisplay,
+      reviewStats, hasReviewHistory: totalReviewed > 0,
+
+      // modal
+      modalReading: s.modalReading,
+      closeModal: () => this.setState({ modalReading: null }),
+      stopProp: (e) => e.stopPropagation(),
+    };
+  }
+
+  handleFile(file) {
+    if (!this.state.uploadCowId || !this.state.uploadCowId.trim()) {
+      this.setState({ uploadError: 'Enter a Cow ID before uploading.' });
+      return;
+    }
+    const isVideo = file.type.startsWith('video');
+    const previewUrl = isVideo ? null : URL.createObjectURL(file);
+    this.setState({ uploadStage: 'uploading', uploadProgress: 0, uploadFileName: file.name, uploadIsVideo: isVideo, uploadPreviewUrl: previewUrl, uploadError: null });
+    this.runProgress();
+  }
+
+  runProgress() {
+    const step = () => {
+      this.setState(s => {
+        const next = Math.min(100, s.uploadProgress + 14 + Math.floor(Math.random() * 12));
+        return { uploadProgress: next };
+      });
+      if (this.state.uploadProgress >= 100) {
+        this.timers.push(setTimeout(() => this.beginProcessing(), 250));
+      } else {
+        this.timers.push(setTimeout(step, 180));
+      }
+    };
+    this.timers.push(setTimeout(step, 180));
+  }
+
+  beginProcessing() {
+    this.setState({ uploadStage: 'processing' });
+    this.timers.push(setTimeout(() => this.finishUpload(), 1100));
+  }
+
+  finishUpload() {
+    const cowId = this.state.uploadCowId.trim();
+    const existing = this.state.cows.find(c => c.id === cowId);
+    let score;
+    if (existing) {
+      const readings = [...existing.readings].sort((a, b) => new Date(a.date) - new Date(b.date));
+      const last = readings[readings.length - 1].score;
+      score = this.roundQuarter(Math.min(5, Math.max(1, last + (Math.random() - 0.5) * 0.75)));
+    } else {
+      score = this.roundQuarter(2.5 + Math.random() * 1.5);
+    }
+    const confRoll = Math.random();
+    const confidence = confRoll < 0.6 ? 'high' : confRoll < 0.85 ? 'medium' : 'low';
+    const flagged = confidence === 'low' || (confidence === 'medium' && Math.random() < 0.4);
+    const reading = { id: cowId + '-' + Date.now(), date: new Date().toISOString(), score, confidence, flagged };
+    this.addReadingToCow(cowId, reading);
+    this.setState({ uploadStage: 'done', uploadResult: reading, uploadResultCowId: cowId });
+  }
+}
+
+</script>
+</body>
+</html>

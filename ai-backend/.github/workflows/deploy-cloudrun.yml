@@ -1,0 +1,83 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: ${{ secrets.GCP_REGION }}
+  SERVICE_NAME: bcs-fastapi-service
+  ARTIFACT_REPO: bcs-fastapi
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Enable required APIs
+        run: |
+          gcloud services enable \
+            run.googleapis.com \
+            artifactregistry.googleapis.com \
+            secretmanager.googleapis.com \
+            --project=${{ env.PROJECT_ID }}
+
+      - name: Grant service account access to secrets
+        run: |
+          gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
+            --member="serviceAccount:${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}" \
+            --role="roles/secretmanager.secretAccessor" \
+            --condition=None || true
+
+      - name: Create Artifact Registry repo if missing
+        run: |
+          gcloud artifacts repositories describe ${{ env.ARTIFACT_REPO }} \
+            --location=${{ env.REGION }} 2>/dev/null || \
+          gcloud artifacts repositories create ${{ env.ARTIFACT_REPO }} \
+            --location=${{ env.REGION }} --repository-format=docker
+
+      - name: Build and push image
+        run: |
+          docker build -t \
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
+          docker push \
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --port 8080 \
+            --allow-unauthenticated \
+            --memory 1Gi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 3 \
+            --set-env-vars "ENV=production,DEBUG=false,DEFAULT_LLM_PROVIDER=gemini,OPENAI_VISION_MODEL=gpt-4.1,CLAUDE_VISION_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0,GEMINI_VISION_MODEL=gemini-3.5-flash,MAX_IMAGE_SIZE_MB=10,AWS_REGION=us-east-1" \
+            --set-secrets "OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,AWS_ACCESS_KEY_ID=aws-access-key-id:latest,AWS_SECRET_ACCESS_KEY=aws-secret-access-key:latest,MONGODB_URL=mongodb-url:latest" \
+            --no-traffic \
+            --tag ${{ github.sha }}
+
+      - name: Route 100% traffic to new revision
+        run: |
+          gcloud run services update-traffic ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --to-tags ${{ github.sha }}=100
