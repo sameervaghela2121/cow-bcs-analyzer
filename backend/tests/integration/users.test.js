@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const { createApp } = require('../../src/app');
 const { connect, clearDatabase, closeDatabase } = require('../setup');
 const User = require('../../src/models/User');
+const Invitation = require('../../src/models/Invitation');
 const config = require('../../src/config/env');
 const { sendInviteEmail } = require('../../src/services/emailService');
 
@@ -55,6 +56,12 @@ describe('POST /api/users/invite', () => {
     const stored = await User.findOne({ email: 'new@example.com' });
     expect(stored.inviteTokenHash).toBeTruthy();
     expect(stored.passwordHash).toBeNull();
+
+    const invitation = await Invitation.findOne({ email: 'new@example.com' });
+    expect(invitation).toBeTruthy();
+    expect(invitation.status).toBe('sent');
+    expect(invitation.user.toString()).toBe(stored._id.toString());
+    expect(invitation.invitedBy.toString()).toBe(admin._id.toString());
   });
 
   it('rejects inviting an email that already exists', async () => {
@@ -64,6 +71,20 @@ describe('POST /api/users/invite', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ email: 'dup@example.com', name: 'Dup Two', role: 'staff' });
     expect(res.status).toBe(409);
+  });
+
+  it('logs a failed invitation when the invite email fails to send', async () => {
+    sendInviteEmail.mockRejectedValueOnce(new Error('SMTP is down'));
+    const res = await request(app)
+      .post('/api/users/invite')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'unreachable@example.com', name: 'Unreachable', role: 'staff' });
+
+    expect(res.status).toBe(500);
+    const invitation = await Invitation.findOne({ email: 'unreachable@example.com' });
+    expect(invitation).toBeTruthy();
+    expect(invitation.status).toBe('failed');
+    expect(invitation.errorMessage).toBe('SMTP is down');
   });
 });
 

@@ -5,7 +5,6 @@ module.exports = {
   mongodbUrl: process.env.MONGODB_URL || 'mongodb://127.0.0.1:27017/bcs_tracker',
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET || 'dev-access-secret',
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret',
-  aiBackendUrl: process.env.AI_BACKEND_URL || 'http://localhost:8000',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   smtp: {
     host: process.env.SMTP_HOST || '',
@@ -15,5 +14,10 @@ module.exports = {
     pass: process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '',
     from: process.env.MAIL_FROM || process.env.SMTP_FROM || 'BCS Tracker <no-reply@example.com>',
   },
-  uploadDir: process.env.UPLOAD_DIR || './uploads',
+  gcs: {
+    bucketName: process.env.GCS_BUCKET_NAME || 'sameerv-cow-bcs-images',
+    projectId: process.env.GCS_PROJECT_ID || 'sameerv',
+    keyFile: process.env.GCS_KEY_FILE || null,
+    signedUrlExpiryMs: Number(process.env.GCS_SIGNED_URL_EXPIRY_MS) || 15 * 60 * 1000,
+  },
 };

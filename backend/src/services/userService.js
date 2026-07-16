@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Invitation = require('../models/Invitation');
 const { generateInviteToken } = require('./authService');
 const { sendInviteEmail } = require('./emailService');
 const config = require('../config/env');
@@ -24,7 +25,21 @@ async function inviteUser({ email, name, role, invitedBy }) {
     invitedBy,
   });
   const inviteUrl = `${config.frontendUrl}/accept-invite?token=${raw}&email=${encodeURIComponent(normalizedEmail)}`;
-  await sendInviteEmail({ to: normalizedEmail, name, inviteUrl });
+
+  try {
+    await sendInviteEmail({ to: normalizedEmail, name, inviteUrl });
+    await Invitation.create({ user: user._id, invitedBy, email: normalizedEmail, status: 'sent' });
+  } catch (err) {
+    await Invitation.create({
+      user: user._id,
+      invitedBy,
+      email: normalizedEmail,
+      status: 'failed',
+      errorMessage: err.message,
+    });
+    throw err;
+  }
+
   return user;
 }
 

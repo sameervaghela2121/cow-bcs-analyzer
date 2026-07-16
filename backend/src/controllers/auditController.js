@@ -3,7 +3,7 @@ const Cow = require('../models/Cow');
 
 async function list(req, res, next) {
   try {
-    const { cowId, action, from, to, page = 1, limit = 100 } = req.query;
+    const { cowsId, action, from, to, page = 1, limit = 100 } = req.query;
     const query = {};
     if (action && ['approved', 'overridden'].includes(action)) query.action = action;
     if (from || to) {
@@ -11,8 +11,8 @@ async function list(req, res, next) {
       if (from) query.createdAt.$gte = new Date(from);
       if (to) query.createdAt.$lte = new Date(to);
     }
-    if (cowId) {
-      const cow = await Cow.findOne({ cowId });
+    if (cowsId) {
+      const cow = await Cow.findOne({ cowsId });
       query.cow = cow ? cow._id : null;
     }
 
@@ -24,10 +24,10 @@ async function list(req, res, next) {
 
     const cowIds = [...new Set(docs.map((d) => d.cow.toString()))];
     const cows = await Cow.find({ _id: { $in: cowIds } });
-    const cowById = new Map(cows.map((c) => [c._id.toString(), c.cowId]));
+    const cowById = new Map(cows.map((c) => [c._id.toString(), c.cowsId]));
 
     const entries = docs.map((d) => ({
-      cowId: cowById.get(d.cow.toString()),
+      cowsId: cowById.get(d.cow.toString()),
       action: d.action,
       oldScore: d.oldScore,
       newScore: d.newScore,
