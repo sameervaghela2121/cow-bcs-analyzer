@@ -17,7 +17,7 @@ export function clearTokens() {
   localStorage.removeItem('bcs_refresh_token');
 }
 
-export const apiClient = axios.create({ baseURL: BASE_URL });
+export const apiClient = axios.create({ baseURL: BASE_URL, adapter: 'fetch' });
 
 apiClient.interceptors.request.use((config) => {
   const token = getAccessToken();
