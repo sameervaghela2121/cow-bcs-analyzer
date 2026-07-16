@@ -1,6 +1,10 @@
 const multer = require('multer');
 const { createProcessingReading } = require('../services/readingService');
 const { processReading } = require('../jobs/processReading');
+const Reading = require('../models/Reading');
+const Media = require('../models/Media');
+const Cow = require('../models/Cow');
+const { absolutePath } = require('../services/storageService');
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -14,6 +18,24 @@ const upload = multer({
     cb(null, true);
   },
 });
+
+function serializeReading(reading, cow) {
+  return {
+    id: reading._id.toString(),
+    cowId: cow.cowId,
+    status: reading.status,
+    score: reading.score,
+    confidence: reading.confidence,
+    band: reading.band,
+    flagged: reading.flagged,
+    flagReason: reading.flagReason,
+    reviewStatus: reading.reviewStatus,
+    spread: reading.spread,
+    providerResults: reading.providerResults,
+    errorMessage: reading.errorMessage,
+    capturedAt: reading.capturedAt,
+  };
+}
 
 async function create(req, res, next) {
   try {
@@ -38,4 +60,28 @@ async function create(req, res, next) {
   }
 }
 
-module.exports = { create, uploadMiddleware: upload.single('file') };
+async function getOne(req, res, next) {
+  try {
+    const reading = await Reading.findById(req.params.id);
+    if (!reading) return res.status(404).json({ error: 'Reading not found.' });
+    const cow = await Cow.findById(reading.cow);
+    res.json({ reading: serializeReading(reading, cow) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getMedia(req, res, next) {
+  try {
+    const reading = await Reading.findById(req.params.id);
+    if (!reading) return res.status(404).json({ error: 'Reading not found.' });
+    const media = await Media.findById(reading.media);
+    if (!media) return res.status(404).json({ error: 'Media not found.' });
+    res.setHeader('Content-Type', media.mimeType);
+    res.sendFile(absolutePath(media.storageKey));
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, getOne, getMedia, uploadMiddleware: upload.single('file'), serializeReading };

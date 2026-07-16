@@ -17,4 +17,7 @@ router.post(
   readingController.create
 );
 
+router.get('/:id', requireAuth(), readingController.getOne);
+router.get('/:id/media', requireAuth(), readingController.getMedia);
+
 module.exports = router;

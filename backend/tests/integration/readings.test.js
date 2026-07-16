@@ -9,22 +9,27 @@ const { connect, clearDatabase, closeDatabase } = require('../setup');
 const User = require('../../src/models/User');
 const Cow = require('../../src/models/Cow');
 const Reading = require('../../src/models/Reading');
+const Media = require('../../src/models/Media');
 const config = require('../../src/config/env');
 const { processReading } = require('../../src/jobs/processReading');
+const { saveFile } = require('../../src/services/storageService');
+
+let app;
+
+beforeAll(async () => { await connect(); app = createApp(); });
+afterAll(async () => { await closeDatabase(); });
 
 function tokenFor(user) {
   return jwt.sign({ sub: user._id.toString(), role: user.role }, config.jwtAccessSecret, { expiresIn: '15m' });
 }
 
 describe('POST /api/readings', () => {
-  let app, token;
-  beforeAll(async () => { await connect(); app = createApp(); });
+  let token;
   beforeEach(async () => {
     const user = await User.create({ email: 'up@example.com', name: 'Up', role: 'staff', status: 'active', passwordHash: 'x' });
     token = tokenFor(user);
   });
   afterEach(async () => { await clearDatabase(); jest.clearAllMocks(); });
-  afterAll(async () => { await closeDatabase(); });
 
   it('creates a processing reading, auto-creating an unknown cow, and returns 202', async () => {
     const res = await request(app)
@@ -61,5 +66,41 @@ describe('POST /api/readings', () => {
       .field('cowId', '4417')
       .attach('file', Buffer.from('fake-video-bytes'), { filename: 'cow.mp4', contentType: 'video/mp4' });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /api/readings/:id and /media', () => {
+  let token, cow, media, reading;
+
+  beforeEach(async () => {
+    const user = await User.create({ email: 'poll@example.com', name: 'Poll', role: 'staff', status: 'active', passwordHash: 'x' });
+    token = tokenFor(user);
+    cow = await Cow.create({ cowId: '5000' });
+    const saved = await saveFile(Buffer.from('fake-bytes'), 'photo.jpg');
+    media = await Media.create({ storageKey: saved.storageKey, mimeType: 'image/jpeg', size: saved.size });
+    reading = await Reading.create({
+      cow: cow._id, media: media._id, status: 'scored', score: 3.25, band: 'ideal', confidence: 'high',
+      reviewStatus: 'not_required', capturedAt: new Date(), createdBy: user._id,
+    });
+  });
+  afterEach(async () => { await clearDatabase(); jest.clearAllMocks(); });
+
+  it('returns the reading by id', async () => {
+    const res = await request(app).get(`/api/readings/${reading._id}`).set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.reading.score).toBe(3.25);
+    expect(res.body.reading.cowId).toBe('5000');
+  });
+
+  it('returns 404 for an unknown reading id', async () => {
+    const fakeId = '507f1f77bcf86cd799439011';
+    const res = await request(app).get(`/api/readings/${fakeId}`).set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('streams the underlying media file', async () => {
+    const res = await request(app).get(`/api/readings/${reading._id}/media`).set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.toString()).toBe('fake-bytes');
   });
 });
