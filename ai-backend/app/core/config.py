@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     AWS_S3_BUCKET: str | None = None
 
+    # --- Google Cloud Storage (cow_images are gs:// URLs) ---
+    # Path to a service-account JSON key file. If unset, falls back to
+    # Application Default Credentials (e.g. GOOGLE_APPLICATION_CREDENTIALS
+    # already set in the environment, or the GCE/Cloud Run metadata server).
+    GOOGLE_APPLICATION_CREDENTIALS: str | None = None
+    GCS_PROJECT_ID: str | None = None
+
     # --- MongoDB ---
     MONGODB_URL: str | None = None
 

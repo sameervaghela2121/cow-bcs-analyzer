@@ -46,6 +46,13 @@ class MongoNotConfiguredError(AppError):
         super().__init__(message, status_code=500)
 
 
+class GcsNotConfiguredError(AppError):
+    """Raised when a gs:// URL is given but GCS credentials can't be resolved."""
+
+    def __init__(self, message: str = "Google Cloud Storage is not configured on this service."):
+        super().__init__(message, status_code=500)
+
+
 def extract_error_message(exc: Exception) -> str:
     """Extract a clean human-readable error message from a provider exception."""
     exc_str = str(exc)

@@ -88,9 +88,15 @@ before committing to one in production.
 POST /api/bcs/assess/{analysis_id}
 
 analysis_id: the _id of a document in the `cow_bcs_analysis` MongoDB collection.
-             That document's `cow_images` field is a list of image URLs -
-             every URL is downloaded and all of them go into the same LLM
-             call (1 image or 10, they're all assessed together as one cow).
+             That document's `cow_images` field is a list of gs:// GCS URIs
+             (e.g. "gs://my-bucket/cow/9999/photo-1.jpg") - each one is
+             downloaded via the GCS client and all of them go into the same
+             LLM call (1 image or 10, they're all assessed together as one
+             cow). Plain http(s):// URLs are also accepted as a fallback.
+
+Requires GCS credentials to be resolvable: set GOOGLE_APPLICATION_CREDENTIALS
+to a service-account key file path (optionally GCS_PROJECT_ID too), or rely
+on Application Default Credentials when running on GCP/Cloud Run.
 
 optional query param: ?providers=gemini,claude   (default = ALL configured providers)
 ```
