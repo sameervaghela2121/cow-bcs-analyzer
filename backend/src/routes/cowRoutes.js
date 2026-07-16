@@ -5,6 +5,8 @@ const cowController = require('../controllers/cowController');
 const router = express.Router();
 
 router.post('/', requireAuth(), cowController.create);
+router.get('/', requireAuth(), cowController.list);
+router.get('/:cowId/readings', requireAuth(), cowController.readings);
 router.get('/:cowId', requireAuth(), cowController.getOne);
 router.patch('/:cowId', requireAuth(), cowController.update);
 

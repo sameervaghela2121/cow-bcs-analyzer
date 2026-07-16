@@ -1,4 +1,6 @@
 const Cow = require('../models/Cow');
+const Reading = require('../models/Reading');
+const { serializeReading } = require('./readingController');
 
 function serializeCow(cow) {
   return {
@@ -46,4 +48,45 @@ async function update(req, res, next) {
   }
 }
 
-module.exports = { create, getOne, update, serializeCow };
+async function list(req, res, next) {
+  try {
+    const { search, filter, sort, page = 1, limit = 100 } = req.query;
+    const query = {};
+    if (search && search.trim()) query.cowId = { $regex: search.trim(), $options: 'i' };
+    if (filter === 'flagged') query.flagged = true;
+    else if (['thin', 'ideal', 'heavy'].includes(filter)) query.latestBand = filter;
+
+    let sortSpec = { lastScoredAt: -1 };
+    if (sort === 'bcs-asc') sortSpec = { latestScore: 1 };
+    else if (sort === 'bcs-desc') sortSpec = { latestScore: -1 };
+    else if (sort === 'flagged') sortSpec = { flagged: -1, lastScoredAt: -1 };
+
+    const total = await Cow.countDocuments(query);
+    const cows = await Cow.find(query)
+      .sort(sortSpec)
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit));
+
+    res.json({ cows: cows.map(serializeCow), total });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function readings(req, res, next) {
+  try {
+    const cow = await Cow.findOne({ cowId: req.params.cowId });
+    if (!cow) return res.status(404).json({ error: 'Cow not found.' });
+    const { page = 1, limit = 100 } = req.query;
+    const total = await Reading.countDocuments({ cow: cow._id });
+    const docs = await Reading.find({ cow: cow._id })
+      .sort({ capturedAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit));
+    res.json({ readings: docs.map((r) => serializeReading(r, cow)), total });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, getOne, update, list, readings, serializeCow };
