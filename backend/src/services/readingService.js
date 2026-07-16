@@ -11,13 +11,17 @@ async function findOrCreateCow(cowId) {
   return cow;
 }
 
-async function createProcessingReading({ cowId, buffer, mimeType, originalName, createdBy }) {
+async function createProcessingReading({ cowId, files, createdBy }) {
   const cow = await findOrCreateCow(cowId);
-  const { storageKey, size } = await saveFile(buffer, originalName);
-  const media = await Media.create({ storageKey, mimeType, size, originalName });
+  const mediaIds = [];
+  for (const file of files) {
+    const { storageKey, size } = await saveFile(file.buffer, file.originalName);
+    const media = await Media.create({ storageKey, mimeType: file.mimeType, size, originalName: file.originalName });
+    mediaIds.push(media._id);
+  }
   const reading = await Reading.create({
     cow: cow._id,
-    media: media._id,
+    media: mediaIds,
     status: 'processing',
     capturedAt: new Date(),
     createdBy,

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { Moon, Sun } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { THEMES } from '../domain/bcs.js';
 import { reviewApi } from '../api/review.js';
@@ -46,7 +47,7 @@ export default function AppShell() {
         </div>
         <div className="bcs-sidebar-footer" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#c9c2ae', padding: '7px 8px', borderRadius: 6, background: '#26362b' }}>
           <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
-          <span>{theme === 'dark' ? '☾' : '☀'}</span>
+          {theme === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
         </div>
         <div className="bcs-sidebar-footer" onClick={logout} style={{ cursor: 'pointer', fontSize: '11.5px', color: '#c9c2ae', marginTop: 10 }}>Log out</div>
       </div>

@@ -34,6 +34,7 @@ function serializeReading(reading, cow) {
     providerResults: reading.providerResults,
     errorMessage: reading.errorMessage,
     capturedAt: reading.capturedAt,
+    mediaCount: reading.media.length,
   };
 }
 
@@ -43,14 +44,12 @@ async function create(req, res, next) {
     if (!cowId || !cowId.trim()) {
       return res.status(400).json({ error: 'cowId is required.' });
     }
-    if (!req.file) {
-      return res.status(400).json({ error: 'A file is required.' });
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'At least one file is required.' });
     }
     const reading = await createProcessingReading({
       cowId: cowId.trim(),
-      buffer: req.file.buffer,
-      mimeType: req.file.mimetype,
-      originalName: req.file.originalname,
+      files: req.files.map((file) => ({ buffer: file.buffer, mimeType: file.mimetype, originalName: file.originalname })),
       createdBy: req.user.id,
     });
     processReading(reading._id.toString());
@@ -75,7 +74,10 @@ async function getMedia(req, res, next) {
   try {
     const reading = await Reading.findById(req.params.id);
     if (!reading) return res.status(404).json({ error: 'Reading not found.' });
-    const media = await Media.findById(reading.media);
+    const index = Number(req.query.index) || 0;
+    const mediaId = reading.media[index];
+    if (!mediaId) return res.status(404).json({ error: 'Media not found.' });
+    const media = await Media.findById(mediaId);
     if (!media) return res.status(404).json({ error: 'Media not found.' });
     res.setHeader('Content-Type', media.mimeType);
     res.sendFile(absolutePath(media.storageKey));
@@ -84,4 +86,4 @@ async function getMedia(req, res, next) {
   }
 }
 
-module.exports = { create, getOne, getMedia, uploadMiddleware: upload.single('file'), serializeReading };
+module.exports = { create, getOne, getMedia, uploadMiddleware: upload.array('files', 10), serializeReading };

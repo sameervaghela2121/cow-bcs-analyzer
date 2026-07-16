@@ -36,7 +36,7 @@ describe('POST /api/readings', () => {
       .post('/api/readings')
       .set('Authorization', `Bearer ${token}`)
       .field('cowId', '4417')
-      .attach('file', Buffer.from('fake-image-bytes'), { filename: 'cow.jpg', contentType: 'image/jpeg' });
+      .attach('files', Buffer.from('fake-image-bytes'), { filename: 'cow.jpg', contentType: 'image/jpeg' });
 
     expect(res.status).toBe(202);
     expect(res.body.status).toBe('processing');
@@ -51,11 +51,33 @@ describe('POST /api/readings', () => {
     expect(processReading).toHaveBeenCalledWith(res.body.readingId.toString());
   });
 
+  it('batches multiple photos into a single reading with one media entry per photo', async () => {
+    const res = await request(app)
+      .post('/api/readings')
+      .set('Authorization', `Bearer ${token}`)
+      .field('cowId', '4417')
+      .attach('files', Buffer.from('front-bytes'), { filename: 'front.jpg', contentType: 'image/jpeg' })
+      .attach('files', Buffer.from('side-bytes'), { filename: 'side.jpg', contentType: 'image/jpeg' });
+
+    expect(res.status).toBe(202);
+    const reading = await Reading.findById(res.body.readingId);
+    expect(reading.media).toHaveLength(2);
+    expect(processReading).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects a request with no cowId', async () => {
     const res = await request(app)
       .post('/api/readings')
       .set('Authorization', `Bearer ${token}`)
-      .attach('file', Buffer.from('fake-image-bytes'), { filename: 'cow.jpg', contentType: 'image/jpeg' });
+      .attach('files', Buffer.from('fake-image-bytes'), { filename: 'cow.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a request with no files', async () => {
+    const res = await request(app)
+      .post('/api/readings')
+      .set('Authorization', `Bearer ${token}`)
+      .field('cowId', '4417');
     expect(res.status).toBe(400);
   });
 
@@ -64,7 +86,7 @@ describe('POST /api/readings', () => {
       .post('/api/readings')
       .set('Authorization', `Bearer ${token}`)
       .field('cowId', '4417')
-      .attach('file', Buffer.from('fake-video-bytes'), { filename: 'cow.mp4', contentType: 'video/mp4' });
+      .attach('files', Buffer.from('fake-video-bytes'), { filename: 'cow.mp4', contentType: 'video/mp4' });
     expect(res.status).toBe(400);
   });
 });
@@ -79,7 +101,7 @@ describe('GET /api/readings/:id and /media', () => {
     const saved = await saveFile(Buffer.from('fake-bytes'), 'photo.jpg');
     media = await Media.create({ storageKey: saved.storageKey, mimeType: 'image/jpeg', size: saved.size });
     reading = await Reading.create({
-      cow: cow._id, media: media._id, status: 'scored', score: 3.25, band: 'ideal', confidence: 'high',
+      cow: cow._id, media: [media._id], status: 'scored', score: 3.25, band: 'ideal', confidence: 'high',
       reviewStatus: 'not_required', capturedAt: new Date(), createdBy: user._id,
     });
   });

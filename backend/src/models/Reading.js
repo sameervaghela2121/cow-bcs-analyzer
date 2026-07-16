@@ -14,7 +14,11 @@ const providerResultSchema = new mongoose.Schema(
 const readingSchema = new mongoose.Schema(
   {
     cow: { type: mongoose.Schema.Types.ObjectId, ref: 'Cow', required: true, index: true },
-    media: { type: mongoose.Schema.Types.ObjectId, ref: 'Media', required: true },
+    media: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Media' }],
+      required: true,
+      validate: { validator: (v) => Array.isArray(v) && v.length > 0, message: 'At least one media file is required.' },
+    },
     status: { type: String, enum: ['processing', 'scored', 'failed'], default: 'processing' },
     score: { type: Number, default: null },
     confidence: { type: String, enum: ['high', 'medium', 'low', null], default: null },

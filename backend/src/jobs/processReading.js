@@ -16,9 +16,16 @@ async function processReading(readingId) {
   if (!reading) return;
 
   try {
-    const media = await Media.findById(reading.media);
-    const buffer = await readFile(media.storageKey);
-    const aiResponse = await assessImage({ buffer, mimeType: media.mimeType, filename: media.originalName || 'image.jpg' });
+    const mediaDocs = await Media.find({ _id: { $in: reading.media } });
+    const mediaById = new Map(mediaDocs.map((m) => [m._id.toString(), m]));
+    const images = await Promise.all(
+      reading.media.map(async (mediaId) => {
+        const media = mediaById.get(mediaId.toString());
+        const buffer = await readFile(media.storageKey);
+        return { buffer, mimeType: media.mimeType, filename: media.originalName || 'image.jpg' };
+      })
+    );
+    const aiResponse = await assessImage({ images });
     const result = reconcileProviders(aiResponse);
 
     if (result.status === 'failed') {
