@@ -5,3 +5,8 @@ __pycache__/
 .pytest_cache/
 .env
 *.egg-info/
+
+# GCS service-account key files - never commit real credentials
+secrets/
+*.json
+!app/**/*.json
