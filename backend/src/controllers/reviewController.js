@@ -79,4 +79,22 @@ async function override(req, res, next) {
   }
 }
 
-module.exports = { queue, approve, override };
+async function stats(req, res, next) {
+  try {
+    const logs = await AuditLog.find();
+    const reviewed = logs.length;
+    const overriddenLogs = logs.filter((l) => l.action === 'overridden');
+    const overridden = overriddenLogs.length;
+    const approved = reviewed - overridden;
+    const cowsOverridden = new Set(overriddenLogs.map((l) => l.cow.toString())).size;
+    const overrideRate = reviewed ? Math.round((overridden / reviewed) * 100) : 0;
+    const avgAdjustment = overridden
+      ? Number((overriddenLogs.reduce((sum, l) => sum + Math.abs(l.newScore - l.oldScore), 0) / overridden).toFixed(2))
+      : 0;
+    res.json({ reviewed, approved, overridden, cowsOverridden, overrideRate, avgAdjustment });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { queue, approve, override, stats };

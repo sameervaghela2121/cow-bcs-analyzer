@@ -87,3 +87,29 @@ describe('Review queue', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /api/review/stats', () => {
+  let app, token, cowA, cowB;
+  beforeAll(async () => { await connect(); app = createApp(); });
+  beforeEach(async () => {
+    const user = await User.create({ email: 'stats@example.com', name: 'Stats', role: 'staff', status: 'active', passwordHash: 'x' });
+    token = tokenFor(user);
+    cowA = await Cow.create({ cowId: '4004' });
+    cowB = await Cow.create({ cowId: '4005' });
+    const media = await Media.create({ storageKey: 'x.jpg', mimeType: 'image/jpeg', size: 1 });
+    const r1 = await Reading.create({ cow: cowA._id, media: media._id, status: 'scored', score: 3.0, createdBy: user._id });
+    const r2 = await Reading.create({ cow: cowB._id, media: media._id, status: 'scored', score: 3.0, createdBy: user._id });
+    await AuditLog.create({ cow: cowA._id, reading: r1._id, user: user._id, action: 'approved', oldScore: 3.0, newScore: 3.0 });
+    await AuditLog.create({ cow: cowB._id, reading: r2._id, user: user._id, action: 'overridden', oldScore: 3.0, newScore: 2.5 });
+  });
+  afterEach(async () => { await clearDatabase(); });
+  afterAll(async () => { await closeDatabase(); });
+
+  it('computes reviewed/approved/overridden/cowsOverridden/overrideRate/avgAdjustment', async () => {
+    const res = await request(app).get('/api/review/stats').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      reviewed: 2, approved: 1, overridden: 1, cowsOverridden: 1, overrideRate: 50, avgAdjustment: 0.5,
+    });
+  });
+});

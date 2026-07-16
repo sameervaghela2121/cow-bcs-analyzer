@@ -5,6 +5,7 @@ const reviewController = require('../controllers/reviewController');
 const router = express.Router();
 
 router.get('/queue', requireAuth(), reviewController.queue);
+router.get('/stats', requireAuth(), reviewController.stats);
 router.post('/:readingId/approve', requireAuth(), reviewController.approve);
 router.post('/:readingId/override', requireAuth(), reviewController.override);
 
