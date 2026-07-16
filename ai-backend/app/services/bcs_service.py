@@ -2,7 +2,6 @@ import asyncio
 
 from app.core.exceptions import LLMProviderError
 from app.core.logging import get_logger
-from app.db.mongo import save_assessment
 from app.prompts.loader import load_prompt
 from app.schemas.bcs import MultiModelBCSResponse, ProviderAssessment
 from app.services.llm.base import ImagePayload, LLMProvider
@@ -90,7 +89,5 @@ async def assess_bcs(
     if success_count == 0:
         errors = [f"{name}: {a.error_message}" for name, a in outcomes]
         raise LLMProviderError(f"All providers failed: {errors}")
-
-    await save_assessment(response.model_dump())
 
     return response
