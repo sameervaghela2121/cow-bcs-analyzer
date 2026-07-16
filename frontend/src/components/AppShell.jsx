@@ -1,0 +1,38 @@
+import { useState } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext.jsx';
+import { THEMES } from '../domain/bcs.js';
+
+const navBase = { padding: '10px 12px', borderRadius: 8, fontSize: '13.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, color: '#eee8d8', textDecoration: 'none' };
+const navActive = { ...navBase, background: '#33443a' };
+
+export default function AppShell() {
+  const { user, logout } = useAuth();
+  const [theme, setTheme] = useState('light');
+  const isAdmin = user?.role === 'admin';
+  const rootStyle = { ...THEMES[theme], display: 'flex', height: '100vh', width: '100vw', background: 'var(--bg-page)', color: 'var(--text-primary)' };
+
+  return (
+    <div style={rootStyle}>
+      <div style={{ width: 216, flexShrink: 0, background: '#1c2a20', color: '#eee8d8', display: 'flex', flexDirection: 'column', padding: '22px 14px', gap: 2 }}>
+        <div style={{ fontSize: 17, fontWeight: 700, padding: '2px 10px 22px' }}>BCS Tracker</div>
+        <NavLink to="/upload" style={({ isActive }) => (isActive ? navActive : navBase)}>Upload</NavLink>
+        <NavLink to="/herd" style={({ isActive }) => (isActive ? navActive : navBase)}>Herd</NavLink>
+        <NavLink to="/review" style={({ isActive }) => (isActive ? navActive : navBase)}>Review</NavLink>
+        <NavLink to="/audit" style={({ isActive }) => (isActive ? navActive : navBase)}>Audit Log</NavLink>
+        {isAdmin && (
+          <NavLink to="/users" style={({ isActive }) => (isActive ? navActive : navBase)}>User Management</NavLink>
+        )}
+        <div style={{ marginTop: 'auto', padding: '10px 10px 4px', fontSize: 11, color: '#9a9280' }}>{user?.name}</div>
+        <div onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#c9c2ae', padding: '7px 8px', borderRadius: 6, background: '#26362b' }}>
+          <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
+          <span>{theme === 'dark' ? '☾' : '☀'}</span>
+        </div>
+        <div onClick={logout} style={{ cursor: 'pointer', fontSize: '11.5px', color: '#c9c2ae', marginTop: 10 }}>Log out</div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+        <Outlet />
+      </div>
+    </div>
+  );
+}
