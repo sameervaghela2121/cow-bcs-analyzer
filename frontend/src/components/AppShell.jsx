@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { THEMES } from '../domain/bcs.js';
 import { reviewApi } from '../api/review.js';
+import './AppShell.css';
 
 const navBase = { padding: '10px 12px', borderRadius: 8, fontSize: '13.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, color: '#eee8d8', textDecoration: 'none' };
 const navActive = { ...navBase, background: '#33443a' };
@@ -18,11 +19,11 @@ export default function AppShell() {
 
   return (
     <div style={rootStyle}>
-      <div style={{ width: 216, flexShrink: 0, background: '#1c2a20', color: '#eee8d8', display: 'flex', flexDirection: 'column', padding: '22px 14px', gap: 2 }}>
-        <div style={{ fontSize: 17, fontWeight: 700, padding: '2px 10px 22px' }}>BCS Tracker</div>
-        <NavLink to="/upload" style={({ isActive }) => (isActive ? navActive : navBase)}>Upload</NavLink>
-        <NavLink to="/herd" style={({ isActive }) => (isActive ? navActive : navBase)}>Herd</NavLink>
-        <NavLink to="/review" style={({ isActive }) => ({ ...(isActive ? navActive : navBase), position: 'relative' })}>
+      <div className="bcs-sidebar" style={{ width: 216, flexShrink: 0, background: '#1c2a20', color: '#eee8d8', display: 'flex', flexDirection: 'column', padding: '22px 14px', gap: 2 }}>
+        <div className="bcs-logo" style={{ fontSize: 17, fontWeight: 700, padding: '2px 10px 22px' }}>BCS Tracker</div>
+        <NavLink to="/upload" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Upload</NavLink>
+        <NavLink to="/herd" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Herd</NavLink>
+        <NavLink to="/review" className="bcs-nav" style={({ isActive }) => ({ ...(isActive ? navActive : navBase), position: 'relative' })}>
           Review
           {flaggedCount > 0 && (
             <span style={{ background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, minWidth: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', marginLeft: 'auto' }}>
@@ -30,18 +31,18 @@ export default function AppShell() {
             </span>
           )}
         </NavLink>
-        <NavLink to="/audit" style={({ isActive }) => (isActive ? navActive : navBase)}>Audit Log</NavLink>
+        <NavLink to="/audit" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Audit Log</NavLink>
         {isAdmin && (
-          <NavLink to="/users" style={({ isActive }) => (isActive ? navActive : navBase)}>User Management</NavLink>
+          <NavLink to="/users" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>User Management</NavLink>
         )}
-        <div style={{ marginTop: 'auto', padding: '10px 10px 4px', fontSize: 11, color: '#9a9280' }}>{user?.name}</div>
-        <div onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#c9c2ae', padding: '7px 8px', borderRadius: 6, background: '#26362b' }}>
+        <div className="bcs-sidebar-footer" style={{ marginTop: 'auto', padding: '10px 10px 4px', fontSize: 11, color: '#9a9280' }}>{user?.name}</div>
+        <div className="bcs-sidebar-footer" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#c9c2ae', padding: '7px 8px', borderRadius: 6, background: '#26362b' }}>
           <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
           <span>{theme === 'dark' ? '☾' : '☀'}</span>
         </div>
-        <div onClick={logout} style={{ cursor: 'pointer', fontSize: '11.5px', color: '#c9c2ae', marginTop: 10 }}>Log out</div>
+        <div className="bcs-sidebar-footer" onClick={logout} style={{ cursor: 'pointer', fontSize: '11.5px', color: '#c9c2ae', marginTop: 10 }}>Log out</div>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+      <div className="bcs-main" style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
         <Outlet />
       </div>
     </div>

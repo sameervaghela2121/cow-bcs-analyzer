@@ -55,7 +55,7 @@ export default function HerdPage() {
         </select>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))', gap: 16 }}>
+      <div className="bcs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))', gap: 16 }}>
         {cows.map((cow) => (
           <div
             key={cow.cowId} onClick={() => navigate(`/herd/${cow.cowId}`)}
