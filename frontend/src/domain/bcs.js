@@ -1,4 +1,5 @@
 export function bandFor(score) {
+  if (score == null) return { key: 'unscored', label: 'Not yet scored', color: '#82796a', bg: '#efece1' };
   if (score < 2.5) return { key: 'thin', label: 'Too thin', color: '#b45309', bg: '#fbeedd' };
   if (score <= 3.75) return { key: 'ideal', label: 'Ideal', color: '#166534', bg: '#e6f2e8' };
   return { key: 'heavy', label: 'Too heavy', color: '#1d4ed8', bg: '#e8edfc' };
@@ -14,6 +15,7 @@ export function confidenceStyleFor(confidence) {
 }
 
 export function formatScore(score) {
+  if (score == null) return '—';
   return score.toFixed(2).replace(/0$/, '').replace(/\.$/, '.0');
 }
 

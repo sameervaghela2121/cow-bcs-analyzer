@@ -20,7 +20,7 @@ export default function CowDetailPage() {
 
   const cow = cowData?.cow;
   const readings = readingsData?.readings || [];
-  const readingsAsc = [...readings].reverse();
+  const readingsAsc = [...readings].reverse().filter((r) => r.score != null);
   const n = readingsAsc.length;
   const chartPoints = readingsAsc.map((r, i) => ({
     x: n === 1 ? 335 : 60 + (i / (n - 1)) * 550,

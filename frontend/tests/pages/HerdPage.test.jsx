@@ -40,6 +40,21 @@ describe('HerdPage', () => {
     expect(screen.getByText('Cow 5001')).toBeInTheDocument();
   });
 
+  it('renders a cow with no successful reading yet (latestScore: null) without crashing', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/cows', () =>
+        HttpResponse.json({
+          cows: [{ cowId: '9999', latestScore: null, latestBand: null, pen: 'Unassigned', flagged: false, lastScoredAt: null }],
+          total: 1,
+        })
+      )
+    );
+    renderHerd();
+    await waitFor(() => expect(screen.getByText('Cow 9999')).toBeInTheDocument());
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText(/not yet scored/i)).toBeInTheDocument();
+  });
+
   it('re-fetches with the flagged filter when the Flagged chip is clicked', async () => {
     let lastParams;
     server.use(

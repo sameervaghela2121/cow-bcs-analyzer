@@ -7,6 +7,11 @@ describe('bandFor', () => {
     expect(bandFor(3.75).key).toBe('ideal');
     expect(bandFor(4.0).key).toBe('heavy');
   });
+
+  it('returns an unscored band for null/undefined instead of throwing', () => {
+    expect(bandFor(null).key).toBe('unscored');
+    expect(bandFor(undefined).key).toBe('unscored');
+  });
 });
 
 describe('confidenceStyleFor', () => {
@@ -22,6 +27,11 @@ describe('formatScore', () => {
     expect(formatScore(3.5)).toBe('3.5');
     expect(formatScore(3.0)).toBe('3.0');
     expect(formatScore(3.25)).toBe('3.25');
+  });
+
+  it('returns a placeholder for null/undefined instead of throwing', () => {
+    expect(formatScore(null)).toBe('—');
+    expect(formatScore(undefined)).toBe('—');
   });
 });
 
