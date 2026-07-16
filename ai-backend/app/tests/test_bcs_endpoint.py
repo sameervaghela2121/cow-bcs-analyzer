@@ -173,6 +173,39 @@ async def test_assess_bcs_downloads_each_image_exactly_once_no_matter_how_many_p
 
 
 @pytest.mark.asyncio
+async def test_assess_bcs_does_not_cap_the_number_of_cow_images():
+    """There's no MAX_IMAGES-style limit anywhere in this path - a cow with
+    a large number of photos must have every single one downloaded and
+    handed to the provider in one call, not silently truncated."""
+    many_urls = [f"https://cdn.example.com/cow-9999/photo-{i}.jpg" for i in range(25)]
+
+    with (
+        patch(
+            "app.api.endpoints.bcs.get_cow_bcs_analysis",
+            new=AsyncMock(return_value=fake_analysis_doc(image_urls=many_urls)),
+        ),
+        patch(
+            "app.api.endpoints.bcs.download_and_validate_image",
+            new=AsyncMock(side_effect=fake_download),
+        ) as download_mock,
+        patch(
+            "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
+            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+        ) as gemini_mock,
+        patch(
+            "app.services.bcs_service.save_assessment",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        response = client.post(f"/api/bcs/assess/{FAKE_ANALYSIS_ID}?providers=gemini")
+
+    assert response.status_code == 200
+    assert response.json()["gemini"]["status"] == "success"
+    assert download_mock.call_count == len(many_urls)
+    assert len(gemini_mock.call_args.kwargs["images"]) == len(many_urls)
+
+
+@pytest.mark.asyncio
 async def test_assess_bcs_can_be_narrowed_to_a_subset():
     with (
         patch(
