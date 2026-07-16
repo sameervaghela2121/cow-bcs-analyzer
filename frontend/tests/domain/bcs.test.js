@@ -1,0 +1,33 @@
+import { bandFor, confidenceStyleFor, formatScore, THEMES } from '../../src/domain/bcs.js';
+
+describe('bandFor', () => {
+  it('classifies thin/ideal/heavy at the exact boundaries', () => {
+    expect(bandFor(2.25).key).toBe('thin');
+    expect(bandFor(2.5).key).toBe('ideal');
+    expect(bandFor(3.75).key).toBe('ideal');
+    expect(bandFor(4.0).key).toBe('heavy');
+  });
+});
+
+describe('confidenceStyleFor', () => {
+  it('maps high/medium/low to the prototype colors', () => {
+    expect(confidenceStyleFor('high').background).toBe('#166534');
+    expect(confidenceStyleFor('medium').background).toBe('#a35a05');
+    expect(confidenceStyleFor('low').background).toBe('#b91c1c');
+  });
+});
+
+describe('formatScore', () => {
+  it('trims trailing zero but keeps one decimal for whole numbers', () => {
+    expect(formatScore(3.5)).toBe('3.5');
+    expect(formatScore(3.0)).toBe('3.0');
+    expect(formatScore(3.25)).toBe('3.25');
+  });
+});
+
+describe('THEMES', () => {
+  it('has light and dark palettes with the core css vars', () => {
+    expect(THEMES.light['--bg-page']).toBe('#f6f5f0');
+    expect(THEMES.dark['--bg-page']).toBe('#14170f');
+  });
+});
