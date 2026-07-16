@@ -126,6 +126,53 @@ async def test_assess_bcs_sends_every_cow_image_in_a_single_call():
 
 
 @pytest.mark.asyncio
+async def test_assess_bcs_downloads_each_image_exactly_once_no_matter_how_many_providers():
+    """Fanning out to all 3 providers must not re-download images per
+    provider - each cow_images URL is fetched once, total, and the same
+    in-memory bytes are reused for every provider call."""
+    with (
+        patch(
+            "app.api.endpoints.bcs.get_cow_bcs_analysis",
+            new=AsyncMock(return_value=fake_analysis_doc()),
+        ),
+        patch(
+            "app.api.endpoints.bcs.download_and_validate_image",
+            new=AsyncMock(side_effect=fake_download),
+        ) as download_mock,
+        patch(
+            "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
+            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+        ),
+        patch(
+            "app.services.llm.claude_provider.ClaudeProvider.analyze_images",
+            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+        ),
+        patch(
+            "app.services.llm.openai_provider.OpenAIProvider.analyze_images",
+            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+        ),
+        patch(
+            "app.services.bcs_service.save_assessment",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        # No ?providers filter - fans out to all 3 configured providers.
+        response = client.post(f"/api/bcs/assess/{FAKE_ANALYSIS_ID}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["gemini"]["status"] == "success"
+    assert body["claude"]["status"] == "success"
+    assert body["openai"]["status"] == "success"
+
+    # 4 images, 3 providers - if downloads happened per-provider this would
+    # be 12. It must be exactly 4: one download per URL, total.
+    assert download_mock.call_count == len(FAKE_IMAGE_URLS)
+    downloaded_urls = sorted(call.args[0] for call in download_mock.call_args_list)
+    assert downloaded_urls == sorted(FAKE_IMAGE_URLS)
+
+
+@pytest.mark.asyncio
 async def test_assess_bcs_can_be_narrowed_to_a_subset():
     with (
         patch(
