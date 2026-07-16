@@ -6,8 +6,10 @@ import CowDetailPage from './pages/CowDetailPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import ReviewPage from './pages/ReviewPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
+import UsersPage from './pages/UsersPage.jsx';
 import AppShell from './components/AppShell.jsx';
 import RequireAuth from './auth/RequireAuth.jsx';
+import RequireRole from './auth/RequireRole.jsx';
 
 export default function App() {
   return (
@@ -22,6 +24,9 @@ export default function App() {
           <Route path="/herd/:cowId" element={<CowDetailPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route element={<RequireRole role="admin" />}>
+            <Route path="/users" element={<UsersPage />} />
+          </Route>
         </Route>
       </Route>
     </Routes>
