@@ -1,0 +1,43 @@
+const User = require('../models/User');
+const {
+  hashToken, hashPassword, generateAccessToken, generateRefreshToken,
+} = require('../services/authService');
+
+function serializeUser(user) {
+  return { id: user._id.toString(), email: user.email, name: user.name, role: user.role, status: user.status };
+}
+
+async function acceptInvite(req, res, next) {
+  try {
+    const { email, token, password } = req.body;
+    if (!email || !token || !password) {
+      return res.status(400).json({ error: 'email, token and password are required.' });
+    }
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!user || user.status !== 'pending' || !user.inviteTokenHash) {
+      return res.status(400).json({ error: 'Invalid or already-used invite.' });
+    }
+    if (user.inviteTokenExpiresAt < new Date()) {
+      return res.status(400).json({ error: 'This invite link has expired.' });
+    }
+    if (hashToken(token) !== user.inviteTokenHash) {
+      return res.status(400).json({ error: 'Invalid invite token.' });
+    }
+
+    user.passwordHash = await hashPassword(password);
+    user.status = 'active';
+    user.inviteTokenHash = null;
+    user.inviteTokenExpiresAt = null;
+    await user.save();
+
+    res.json({
+      accessToken: generateAccessToken(user),
+      refreshToken: generateRefreshToken(user),
+      user: serializeUser(user),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { acceptInvite, serializeUser };

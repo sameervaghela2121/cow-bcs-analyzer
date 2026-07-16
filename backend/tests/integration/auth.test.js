@@ -11,11 +11,19 @@ const { requireAuth, requireRole } = require('../../src/middleware/auth');
 // singleton, which app.js mounts at /api and consults per-request.
 const routes = require('../../src/routes');
 
+// connect()/closeDatabase() are hoisted to file scope (rather than scoped to
+// the first describe, as an earlier draft had it) because this file
+// accumulates a new describe block per task (Tasks 7-10 all append here).
+// A describe-scoped afterAll(closeDatabase) closes the shared connection as
+// soon as that describe's own tests finish, breaking every describe added
+// after it.
+beforeAll(async () => { await connect(); });
+afterAll(async () => { await closeDatabase(); });
+
 describe('auth middleware', () => {
   let app;
 
   beforeAll(async () => {
-    await connect();
     app = createApp();
     routes.get('/_test/whoami', requireAuth(), (req, res) => res.json({ user: req.user }));
     routes.get('/_test/admin-only', requireAuth(), requireRole('admin'), (req, res) =>
@@ -23,7 +31,6 @@ describe('auth middleware', () => {
     );
   });
   afterEach(async () => { await clearDatabase(); });
-  afterAll(async () => { await closeDatabase(); });
 
   it('rejects requests with no Authorization header', async () => {
     const res = await request(app).get('/api/_test/whoami');
@@ -71,5 +78,62 @@ describe('auth middleware', () => {
     const token = jwt.sign({ sub: user._id.toString(), role: 'staff' }, config.jwtAccessSecret, { expiresIn: '15m' });
     const res = await request(app).get('/api/_test/admin-only').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/auth/accept-invite', () => {
+  let app;
+  const crypto = require('crypto');
+  const User = require('../../src/models/User');
+
+  beforeAll(async () => { app = createApp(); });
+  afterEach(async () => { await clearDatabase(); });
+
+  it('activates a pending user with a valid token and sets their password', async () => {
+    const raw = 'a'.repeat(64);
+    const hash = crypto.createHash('sha256').update(raw).digest('hex');
+    await User.create({
+      email: 'pending@example.com', name: 'Pending', role: 'staff', status: 'pending',
+      inviteTokenHash: hash, inviteTokenExpiresAt: new Date(Date.now() + 60000),
+    });
+
+    const res = await request(app).post('/api/auth/accept-invite').send({
+      email: 'pending@example.com', token: raw, password: 'new-password-123',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeTruthy();
+    expect(res.body.refreshToken).toBeTruthy();
+    expect(res.body.user.status).toBe('active');
+
+    const updated = await User.findOne({ email: 'pending@example.com' });
+    expect(updated.status).toBe('active');
+    expect(updated.passwordHash).toBeTruthy();
+    expect(updated.inviteTokenHash).toBeNull();
+  });
+
+  it('rejects an expired invite token', async () => {
+    const raw = 'b'.repeat(64);
+    const hash = crypto.createHash('sha256').update(raw).digest('hex');
+    await User.create({
+      email: 'expired@example.com', name: 'Expired', role: 'staff', status: 'pending',
+      inviteTokenHash: hash, inviteTokenExpiresAt: new Date(Date.now() - 1000),
+    });
+    const res = await request(app).post('/api/auth/accept-invite').send({
+      email: 'expired@example.com', token: raw, password: 'new-password-123',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a wrong token', async () => {
+    const hash = crypto.createHash('sha256').update('c'.repeat(64)).digest('hex');
+    await User.create({
+      email: 'wrong@example.com', name: 'Wrong', role: 'staff', status: 'pending',
+      inviteTokenHash: hash, inviteTokenExpiresAt: new Date(Date.now() + 60000),
+    });
+    const res = await request(app).post('/api/auth/accept-invite').send({
+      email: 'wrong@example.com', token: 'd'.repeat(64), password: 'new-password-123',
+    });
+    expect(res.status).toBe(400);
   });
 });
