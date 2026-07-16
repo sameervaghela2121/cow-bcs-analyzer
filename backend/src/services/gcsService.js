@@ -17,7 +17,20 @@ function sanitizeBatchTimestamp(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, '-');
 }
 
+const SAFE_PATH_SEGMENT = /^[A-Za-z0-9._-]{1,128}$/;
+
+function assertSafePathSegment(value, label) {
+  if (typeof value !== 'string' || !SAFE_PATH_SEGMENT.test(value)) {
+    const err = new Error(`Invalid ${label}: only letters, numbers, '.', '_', '-' are allowed.`);
+    err.status = 400;
+    throw err;
+  }
+}
+
 function buildObjectPath({ cowsId, batchTimestamp, filename }) {
+  assertSafePathSegment(cowsId, 'cowsId');
+  assertSafePathSegment(batchTimestamp, 'batchTimestamp');
+  assertSafePathSegment(filename, 'filename');
   return `${cowsId}/${batchTimestamp}/${filename}`;
 }
 

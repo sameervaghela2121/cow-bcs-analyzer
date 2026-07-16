@@ -63,7 +63,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const res = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: ['gs://bucket/3124/ts/a.jpg'] });
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`] });
 
     expect(res.status).toBe(201);
     expect(res.body.bcsAnalysis.status).toBe('not_started');
@@ -83,11 +83,59 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects creation with an image path traversal attempt', async () => {
+    const res = await request(app)
+      .post('/api/bcs-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/../3124/ts/a.jpg`] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects creation with an image belonging to a different bucket', async () => {
+    const res = await request(app)
+      .post('/api/bcs-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', cowsImages: ['gs://some-other-bucket/3124/ts/a.jpg'] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects creation with an image belonging to a different cowsId', async () => {
+    const res = await request(app)
+      .post('/api/bcs-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/9999/ts/a.jpg`] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects upload-url requests with a path-traversal filename', async () => {
+    const res = await request(app)
+      .post('/api/bcs-analysis/upload-urls')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', files: [{ filename: '../../etc/passwd', contentType: 'image/jpeg' }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects upload-url requests with a path-traversal cowsId', async () => {
+    const res = await request(app)
+      .post('/api/bcs-analysis/upload-urls')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '../3124', files: [{ filename: 'a.jpg', contentType: 'image/jpeg' }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects upload-url requests with a disallowed content type', async () => {
+    const res = await request(app)
+      .post('/api/bcs-analysis/upload-urls')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', files: [{ filename: 'a.svg', contentType: 'image/svg+xml' }] });
+    expect(res.status).toBe(400);
+  });
+
   it('polls a record by id', async () => {
     const createRes = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: ['gs://bucket/3124/ts/a.jpg'] });
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`] });
 
     const res = await request(app)
       .get(`/api/bcs-analysis/${createRes.body.bcsAnalysis.id}`)
