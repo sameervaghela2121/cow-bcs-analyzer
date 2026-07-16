@@ -10,4 +10,7 @@ async function start() {
   });
 }
 
-start();
+start().catch((err) => {
+  console.error('Failed to start server:', err); // eslint-disable-line no-console
+  process.exit(1);
+});
