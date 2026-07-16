@@ -8,6 +8,7 @@ const {
   toGsUri,
   fromGsUri,
   generateUploadUrl,
+  generateReadUrl,
 } = require('../services/gcsService');
 const config = require('../config/env');
 
@@ -31,12 +32,18 @@ function isOwnedImageUri(uri, cowsId) {
   );
 }
 
-function serializeBcsAnalysis(doc) {
+// Short-lived signed GET URLs so the frontend can render the images directly
+// (cowsImages itself is just gs:// object paths, not browser-fetchable).
+async function serializeBcsAnalysis(doc) {
+  const imageUrls = await Promise.all(
+    doc.cowsImages.map((uri) => generateReadUrl({ objectPath: fromGsUri(uri).objectPath }))
+  );
   return {
     id: doc._id.toString(),
     cow: doc.cow.toString(),
     cowsId: doc.cowsId,
     cowsImages: doc.cowsImages,
+    imageUrls,
     bcsScore: doc.bcsScore,
     status: doc.status,
     errorMessage: doc.errorMessage,
@@ -99,7 +106,7 @@ async function create(req, res, next) {
     }
 
     const analysis = await createAnalysis({ cowsId, cowsImages, userId: req.user.id });
-    res.status(201).json({ bcsAnalysis: serializeBcsAnalysis(analysis) });
+    res.status(201).json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
   } catch (err) {
     next(err);
   }
@@ -113,7 +120,7 @@ async function getOne(req, res, next) {
     }
     const analysis = await BcsAnalysis.findById(id);
     if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
-    res.json({ bcsAnalysis: serializeBcsAnalysis(analysis) });
+    res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
   } catch (err) {
     next(err);
   }

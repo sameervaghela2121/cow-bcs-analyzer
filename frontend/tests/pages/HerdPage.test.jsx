@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
@@ -15,8 +15,11 @@ function renderHerd() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <HerdPage />
+      <MemoryRouter initialEntries={['/herd']}>
+        <Routes>
+          <Route path="/herd" element={<HerdPage />} />
+          <Route path="/herd/:cowsId" element={<div>Cow detail page</div>} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -28,8 +31,8 @@ describe('HerdPage', () => {
       http.get('http://localhost:4000/api/cows', () =>
         HttpResponse.json({
           cows: [
-            { cowId: '4417', latestScore: 3.25, latestBand: 'ideal', pen: 'Pen 1', flagged: false, lastScoredAt: '2026-07-10T00:00:00Z' },
-            { cowId: '5001', latestScore: 4.5, latestBand: 'heavy', pen: 'Pen 2', flagged: true, lastScoredAt: '2026-07-09T00:00:00Z' },
+            { id: 'c1', cowsId: '4417' },
+            { id: 'c2', cowsId: '5001' },
           ],
           total: 2,
         })
@@ -40,32 +43,48 @@ describe('HerdPage', () => {
     expect(screen.getByText('Cow 5001')).toBeInTheDocument();
   });
 
-  it('renders a cow with no successful reading yet (latestScore: null) without crashing', async () => {
+  it('shows a status pill below each card, and a placeholder when there are no uploads yet', async () => {
     server.use(
       http.get('http://localhost:4000/api/cows', () =>
         HttpResponse.json({
-          cows: [{ cowId: '9999', latestScore: null, latestBand: null, pen: 'Unassigned', flagged: false, lastScoredAt: null }],
-          total: 1,
+          cows: [
+            { id: 'c1', cowsId: '4417', latestAnalysisStatus: 'processing' },
+            { id: 'c2', cowsId: '5001', latestAnalysisStatus: null },
+          ],
+          total: 2,
         })
       )
     );
     renderHerd();
-    await waitFor(() => expect(screen.getByText('Cow 9999')).toBeInTheDocument());
-    expect(screen.getByText('—')).toBeInTheDocument();
-    expect(screen.getByText(/not yet scored/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+    expect(screen.getByText(/processing/i)).toBeInTheDocument();
+    expect(screen.getByText(/no uploads yet/i)).toBeInTheDocument();
   });
 
-  it('re-fetches with the flagged filter when the Flagged chip is clicked', async () => {
-    let lastParams;
+  it('navigates to the cow detail page using cowsId when a card is clicked', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/cows', () =>
+        HttpResponse.json({ cows: [{ id: 'c1', cowsId: '4417' }], total: 1 })
+      )
+    );
+    renderHerd();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+    await user.click(screen.getByText('Cow 4417'));
+    expect(await screen.findByText(/cow detail page/i)).toBeInTheDocument();
+  });
+
+  it('re-fetches with the search term as a query param', async () => {
+    let lastSearch;
     server.use(
       http.get('http://localhost:4000/api/cows', ({ request }) => {
-        lastParams = new URL(request.url).searchParams.get('filter');
+        lastSearch = new URL(request.url).searchParams.get('search');
         return HttpResponse.json({ cows: [], total: 0 });
       })
     );
     renderHerd();
-    await waitFor(() => expect(lastParams).toBe(null));
-    await userEvent.click(screen.getByText('Flagged'));
-    await waitFor(() => expect(lastParams).toBe('flagged'));
+    await waitFor(() => expect(lastSearch).toBe(null));
+    await userEvent.type(screen.getByPlaceholderText(/search cow id/i), '44');
+    await waitFor(() => expect(lastSearch).toBe('44'));
   });
 });

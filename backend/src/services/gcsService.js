@@ -56,6 +56,17 @@ async function generateUploadUrl({ objectPath, contentType }) {
   return url;
 }
 
+async function generateReadUrl({ objectPath }) {
+  const bucket = getStorage().bucket(config.gcs.bucketName);
+  const file = bucket.file(objectPath);
+  const [url] = await file.getSignedUrl({
+    version: 'v4',
+    action: 'read',
+    expires: Date.now() + config.gcs.signedUrlExpiryMs,
+  });
+  return url;
+}
+
 module.exports = {
   getStorage,
   sanitizeBatchTimestamp,
@@ -63,4 +74,5 @@ module.exports = {
   toGsUri,
   fromGsUri,
   generateUploadUrl,
+  generateReadUrl,
 };

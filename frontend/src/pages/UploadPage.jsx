@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, ImagePlus, UploadCloud, X, XCircle } from 'lucide-react';
-import { readingsApi } from '../api/readings.js';
-import { usePollReading } from '../hooks/usePollReading.js';
-import { bandFor, formatScore } from '../domain/bcs.js';
+import { ImagePlus, UploadCloud, X } from 'lucide-react';
+import { bcsAnalysisApi, putFileToGcs, analyzeBcsRecord } from '../api/bcsAnalysis.js';
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const SAFE_COWS_ID = /^[A-Za-z0-9._-]{1,128}$/;
+const EXTENSION_BY_TYPE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Original filenames can contain spaces/unicode/anything - the backend only
+// accepts [A-Za-z0-9._-], so we never trust the browser's File.name and
+// generate a safe one instead.
+function safeFilename(file, index) {
+  const ext = EXTENSION_BY_TYPE[file.type] || 'bin';
+  return `photo-${index + 1}.${ext}`;
 }
 
 function FilePreview({ file, onRemove }) {
@@ -46,34 +54,6 @@ function FilePreview({ file, onRemove }) {
   );
 }
 
-function BatchStatus({ readingId, fileCount }) {
-  const { reading, isDone } = usePollReading(readingId);
-
-  return (
-    <div style={{ border: '1px solid #e5e0d3', borderRadius: 14, padding: '18px 20px', background: '#fff', display: 'flex', alignItems: 'center', gap: 14 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '14px', fontWeight: 700 }}>{fileCount} photo{fileCount === 1 ? '' : 's'}</div>
-        {!isDone && (
-          <div style={{ fontSize: 12.5, color: '#82796a', marginTop: 4 }}>Extracting frames &amp; scoring…</div>
-        )}
-        {isDone && reading?.status === 'scored' && (
-          <div style={{ fontSize: 12.5, color: '#166534', marginTop: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <CheckCircle2 size={14} /> Reading saved{reading.flagged ? ' — flagged for review' : ''}
-          </div>
-        )}
-        {isDone && reading?.status === 'failed' && (
-          <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <XCircle size={14} /> Scoring failed: {reading.errorMessage}
-          </div>
-        )}
-      </div>
-      {isDone && reading?.status === 'scored' && (
-        <div style={{ fontSize: 22, fontWeight: 800, color: bandFor(reading.score).color }}>{formatScore(reading.score)}</div>
-      )}
-    </div>
-  );
-}
-
 export default function UploadPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
@@ -81,11 +61,9 @@ export default function UploadPage() {
   const [error, setError] = useState(null);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-  const [readingId, setReadingId] = useState(null);
-  const [submittedCount, setSubmittedCount] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const locked = submitting || !!readingId;
+  const locked = submitting;
 
   function handleFiles(fileList) {
     const incoming = Array.from(fileList);
@@ -124,8 +102,13 @@ export default function UploadPage() {
   }
 
   async function submitBatch() {
-    if (!cowId.trim()) {
+    const cowsId = cowId.trim();
+    if (!cowsId) {
       setError('Enter a Cow ID before uploading.');
+      return;
+    }
+    if (!SAFE_COWS_ID.test(cowsId)) {
+      setError("Cow ID may only contain letters, numbers, '.', '_', '-'.");
       return;
     }
     if (pendingFiles.length === 0) {
@@ -135,22 +118,39 @@ export default function UploadPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const { readingId: id } = await readingsApi.upload({ cowId, files: pendingFiles.map((f) => f.file) });
-      setSubmittedCount(pendingFiles.length);
-      setReadingId(id);
+      const namedFiles = pendingFiles.map(({ file }, i) => ({ file, filename: safeFilename(file, i) }));
+
+      // 1. Backend finds-or-creates the cow and hands back one signed GCS
+      //    upload URL per file, all in the same cowsId/<batchTimestamp>/ folder.
+      const { uploads } = await bcsAnalysisApi.generateUploadUrls({
+        cowsId,
+        files: namedFiles.map(({ file, filename }) => ({ filename, contentType: file.type })),
+      });
+
+      // 2. Upload every file straight to GCS. If any one fails, abort before
+      //    creating a record that would reference a missing image.
+      await Promise.all(uploads.map((upload, i) => putFileToGcs(upload.uploadUrl, namedFiles[i].file)));
+
+      // 3. Create the bcs_analysis record referencing the uploaded images.
+      const analysis = await bcsAnalysisApi.create({
+        cowsId,
+        cowsImages: uploads.map((u) => u.gsUri),
+      });
+
+      // 4. Kick off scoring on the AI backend directly. Even if this call
+      //    fails, the record now exists, so move on to the cow's detail
+      //    page - it'll show as "Waiting to start" and keep polling.
+      try {
+        await analyzeBcsRecord(analysis.id);
+      } catch {
+        // best-effort trigger - the detail page is the source of truth from here
+      }
+
+      navigate(`/herd/${cowsId}`);
     } catch (err) {
-      setError(err.response?.data?.error || 'Upload failed.');
-    } finally {
+      setError(err.response?.data?.error || err.message || 'Upload failed.');
       setSubmitting(false);
     }
-  }
-
-  function uploadMore() {
-    setPendingFiles([]);
-    setReadingId(null);
-    setSubmittedCount(0);
-    setCowId('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   return (
@@ -203,7 +203,7 @@ export default function UploadPage() {
             </div>
             <input
               ref={fileInputRef}
-              id="upload-file-input" type="file" accept="image/jpeg,image/png,image/webp" multiple
+              id="upload-file-input" aria-label="Choose file" type="file" accept="image/jpeg,image/png,image/webp" multiple
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => { if (e.target.files.length) handleFiles(e.target.files); e.target.value = ''; }}
               style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
@@ -229,19 +229,6 @@ export default function UploadPage() {
           </button>
         )}
       </div>
-
-      {readingId && (
-        <div style={{ marginTop: 20 }}>
-          <BatchStatus readingId={readingId} fileCount={submittedCount} />
-        </div>
-      )}
-
-      {readingId && (
-        <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
-          <button onClick={uploadMore} style={{ padding: '10px 18px', borderRadius: 8, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Upload another</button>
-          <button onClick={() => navigate(`/herd/${cowId}`)} style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>View cow history</button>
-        </div>
-      )}
     </div>
   );
 }

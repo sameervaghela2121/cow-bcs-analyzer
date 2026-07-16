@@ -3,6 +3,7 @@ jest.mock('../../src/services/gcsService', () => {
   return {
     ...actual,
     generateUploadUrl: jest.fn().mockResolvedValue('https://storage.googleapis.com/signed-put-url'),
+    generateReadUrl: jest.fn().mockResolvedValue('https://storage.googleapis.com/signed-get-url'),
   };
 });
 

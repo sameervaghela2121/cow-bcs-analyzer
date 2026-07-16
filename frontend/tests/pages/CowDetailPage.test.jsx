@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
@@ -16,7 +16,7 @@ function renderDetail() {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/herd/4417']}>
         <Routes>
-          <Route path="/herd/:cowId" element={<CowDetailPage />} />
+          <Route path="/herd/:cowsId" element={<CowDetailPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -24,26 +24,88 @@ function renderDetail() {
 }
 
 describe('CowDetailPage', () => {
-  it('renders cow metadata and reading history', async () => {
+  it('renders the cow and its analysis history, most recent first', async () => {
     server.use(
       http.get('http://localhost:4000/api/cows/4417', () =>
-        HttpResponse.json({ cow: { cowId: '4417', breed: 'Holstein', lactation: 'Mid', pen: 'Pen 1', latestScore: 3.25, latestBand: 'ideal' } })
+        HttpResponse.json({ cow: { id: 'c1', cowsId: '4417' } })
       ),
-      http.get('http://localhost:4000/api/cows/4417/readings', () =>
+      http.get('http://localhost:4000/api/cows/4417/analyses', () =>
         HttpResponse.json({
-          readings: [
-            { id: 'r1', score: 3.25, confidence: 'high', band: 'ideal', capturedAt: '2026-07-10T00:00:00Z', flagged: false },
-            { id: 'r2', score: 3.5, confidence: 'medium', band: 'ideal', capturedAt: '2026-07-01T00:00:00Z', flagged: false },
+          bcsAnalyses: [
+            {
+              id: 'a2',
+              status: 'completed',
+              createdAt: '2026-07-10T00:00:00Z',
+              imageUrls: ['https://storage.googleapis.com/a2-img1.jpg'],
+              bcsScore: { gemini: { final_bcs: 3.25, confidence: 'High', status: 'success' } },
+            },
+            {
+              id: 'a1',
+              status: 'completed',
+              createdAt: '2026-07-01T00:00:00Z',
+              imageUrls: ['https://storage.googleapis.com/a1-img1.jpg'],
+              bcsScore: { gemini: { final_bcs: 3.0, confidence: 'Medium', status: 'success' } },
+            },
           ],
           total: 2,
         })
-      ),
-      http.get('http://localhost:4000/api/readings/r1/media', () => HttpResponse.arrayBuffer(new ArrayBuffer(0))),
-      http.get('http://localhost:4000/api/readings/r2/media', () => HttpResponse.arrayBuffer(new ArrayBuffer(0)))
+      )
     );
     renderDetail();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
-    expect(screen.getByText('Holstein')).toBeInTheDocument();
-    expect(screen.getAllByText(/confirmed/i).length + screen.getAllByText(/high|medium/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/completed/i).length).toBe(2);
+    const scoreLines = screen.getAllByText(/gemini/i).map((el) => el.closest('div').textContent);
+    expect(scoreLines.some((t) => t.includes('3.25'))).toBe(true);
+    expect(scoreLines.some((t) => t.includes('Medium'))).toBe(true);
+  });
+
+  it('polls a pending analysis every 10s and stops once it completes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let pollCalls = 0;
+
+    server.use(
+      http.get('http://localhost:4000/api/cows/4417', () =>
+        HttpResponse.json({ cow: { id: 'c1', cowsId: '4417' } })
+      ),
+      http.get('http://localhost:4000/api/cows/4417/analyses', () =>
+        HttpResponse.json({
+          bcsAnalyses: [
+            { id: 'a3', status: 'not_started', createdAt: '2026-07-16T00:00:00Z', imageUrls: [], bcsScore: {} },
+          ],
+          total: 1,
+        })
+      ),
+      http.get('http://localhost:4000/api/bcs-analysis/a3', () => {
+        pollCalls += 1;
+        const done = pollCalls >= 3;
+        return HttpResponse.json({
+          bcsAnalysis: {
+            id: 'a3',
+            status: done ? 'completed' : 'processing',
+            imageUrls: [],
+            bcsScore: done ? { gemini: { final_bcs: 3.5, confidence: 'High', status: 'success' } } : {},
+          },
+        });
+      })
+    );
+
+    renderDetail();
+    await waitFor(() => expect(screen.getByText(/waiting to start|processing/i)).toBeInTheDocument());
+
+    // Enough 10s intervals for the row to reach 'completed' (mount fetch + 2 refetches).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25000);
+    });
+    await waitFor(() => expect(screen.getByText(/^completed$/i)).toBeInTheDocument());
+    expect(pollCalls).toBeGreaterThanOrEqual(3);
+    const callsAtCompletion = pollCalls;
+
+    // status stayed completed after further time passes - polling stopped
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+    expect(pollCalls).toBe(callsAtCompletion);
+
+    vi.useRealTimers();
   });
 });

@@ -2,23 +2,15 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { cowsApi } from '../api/cows.js';
-import Badge from '../components/Badge.jsx';
-import { bandFor } from '../domain/bcs.js';
-
-const FILTERS = [
-  { key: 'all', label: 'All' }, { key: 'flagged', label: 'Flagged' },
-  { key: 'thin', label: 'Too thin' }, { key: 'ideal', label: 'Ideal' }, { key: 'heavy', label: 'Too heavy' },
-];
+import StatusPill from '../components/StatusPill.jsx';
 
 export default function HerdPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [sort, setSort] = useState('recent');
 
   const { data } = useQuery({
-    queryKey: ['cows', { search, filter, sort }],
-    queryFn: () => cowsApi.list({ search: search || undefined, filter: filter === 'all' ? undefined : filter, sort }),
+    queryKey: ['cows', { search }],
+    queryFn: () => cowsApi.list({ search: search || undefined }),
   });
 
   const cows = data?.cows || [];
@@ -33,41 +25,28 @@ export default function HerdPage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 22 }}>
         <input
           placeholder="Search cow ID…" value={search} onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #d8d2c2', width: 160 }}
+          style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #d8d2c2', width: 220 }}
         />
-        {FILTERS.map((f) => (
-          <div
-            key={f.key} onClick={() => setFilter(f.key)}
-            style={{
-              padding: '8px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              border: '1px solid #d8d2c2', background: filter === f.key ? '#1c2a20' : '#fff',
-              color: filter === f.key ? '#fff' : '#20241f',
-            }}
-          >
-            {f.label}
-          </div>
-        ))}
-        <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ marginLeft: 'auto', padding: '9px 12px', borderRadius: 8, border: '1px solid #d8d2c2' }}>
-          <option value="recent">Sort: Most recently scored</option>
-          <option value="bcs-asc">Sort: BCS low to high</option>
-          <option value="bcs-desc">Sort: BCS high to low</option>
-          <option value="flagged">Sort: Flagged first</option>
-        </select>
       </div>
 
       <div className="bcs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))', gap: 16 }}>
         {cows.map((cow) => (
-          <div
-            key={cow.cowId} onClick={() => navigate(`/herd/${cow.cowId}`)}
-            style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, overflow: 'hidden', cursor: 'pointer' }}
-          >
-            <div style={{ height: 92, background: 'linear-gradient(135deg,#7c9b85,#4f6b57)' }} />
-            <div style={{ padding: '12px 14px 14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>Cow {cow.cowId}</div>
-                <Badge score={cow.latestScore} />
+          <div key={cow.cowsId}>
+            <div
+              onClick={() => navigate(`/herd/${cow.cowsId}`)}
+              style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, overflow: 'hidden', cursor: 'pointer' }}
+            >
+              <div style={{ height: 92, background: 'linear-gradient(135deg,#7c9b85,#4f6b57)' }} />
+              <div style={{ padding: '12px 14px 14px' }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>Cow {cow.cowsId}</div>
               </div>
-              <div style={{ fontSize: 12, color: '#82796a', marginTop: 4 }}>{bandFor(cow.latestScore).label} &middot; {cow.pen}</div>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center' }}>
+              {cow.latestAnalysisStatus ? (
+                <StatusPill status={cow.latestAnalysisStatus} />
+              ) : (
+                <span style={{ fontSize: 11.5, color: '#a39c86' }}>No uploads yet</span>
+              )}
             </div>
           </div>
         ))}

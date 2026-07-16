@@ -1,3 +1,11 @@
+jest.mock('../../src/services/gcsService', () => {
+  const actual = jest.requireActual('../../src/services/gcsService');
+  return {
+    ...actual,
+    generateReadUrl: jest.fn().mockResolvedValue('https://storage.googleapis.com/signed-get-url'),
+  };
+});
+
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const { createApp } = require('../../src/app');
@@ -71,6 +79,28 @@ describe('GET /api/cows (herd list)', () => {
     expect(res.body.cows.length).toBe(3);
     const res2 = await request(app).get('/api/cows?search=1002').set('Authorization', `Bearer ${token}`);
     expect(res2.body.cows.map((c) => c.cowsId)).toEqual(['1002']);
+  });
+
+  it('has no latestAnalysisStatus for a cow with no uploads yet', async () => {
+    const res = await request(app).get('/api/cows?search=1001').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestAnalysisStatus).toBeNull();
+  });
+
+  it('surfaces the most recent analysis status per cow', async () => {
+    const user = await User.findOne({ email: 'herd@example.com' });
+    const cow = await Cow.findOne({ cowsId: '1002' });
+    await BcsAnalysis.create({
+      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
+      status: 'processing', createdBy: user._id, updatedBy: user._id,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    await BcsAnalysis.create({
+      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1002/ts2/b.jpg'],
+      status: 'completed', createdBy: user._id, updatedBy: user._id,
+    });
+
+    const res = await request(app).get('/api/cows?search=1002').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestAnalysisStatus).toBe('completed');
   });
 });
 

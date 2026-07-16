@@ -2,12 +2,14 @@ const Cow = require('../models/Cow');
 const BcsAnalysis = require('../models/BcsAnalysis');
 const { serializeBcsAnalysis } = require('./bcsAnalysisController');
 
-function serializeCow(cow) {
+function serializeCow(cow, latestAnalysis) {
   return {
     id: cow._id.toString(),
     cowsId: cow.cowsId,
     createdAt: cow.createdAt,
     updatedAt: cow.updatedAt,
+    latestAnalysisStatus: latestAnalysis?.status ?? null,
+    latestAnalysisAt: latestAnalysis?.createdAt ?? null,
   };
 }
 
@@ -46,7 +48,17 @@ async function list(req, res, next) {
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit));
 
-    res.json({ cows: cows.map(serializeCow), total });
+    const latestAnalysisByCow = await BcsAnalysis.aggregate([
+      { $match: { cow: { $in: cows.map((c) => c._id) } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: '$cow', status: { $first: '$status' }, createdAt: { $first: '$createdAt' } } },
+    ]);
+    const latestById = new Map(latestAnalysisByCow.map((d) => [d._id.toString(), d]));
+
+    res.json({
+      cows: cows.map((cow) => serializeCow(cow, latestById.get(cow._id.toString()))),
+      total,
+    });
   } catch (err) {
     next(err);
   }
@@ -62,7 +74,7 @@ async function analyses(req, res, next) {
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit));
-    res.json({ bcsAnalyses: docs.map(serializeBcsAnalysis), total });
+    res.json({ bcsAnalyses: await Promise.all(docs.map(serializeBcsAnalysis)), total });
   } catch (err) {
     next(err);
   }
