@@ -25,6 +25,27 @@ class LLMProviderError(AppError):
         super().__init__(message, status_code=502)
 
 
+class AnalysisNotFoundError(AppError):
+    """Raised when the given cow_bcs_analysis _id doesn't resolve to a document."""
+
+    def __init__(self, message: str = "The requested cow BCS analysis record was not found."):
+        super().__init__(message, status_code=404)
+
+
+class ImageDownloadError(AppError):
+    """Raised when a cow_images URL can't be fetched."""
+
+    def __init__(self, message: str = "Failed to download one or more cow images."):
+        super().__init__(message, status_code=502)
+
+
+class MongoNotConfiguredError(AppError):
+    """Raised when MONGODB_URL isn't set but a Mongo-backed lookup was requested."""
+
+    def __init__(self, message: str = "MongoDB is not configured on this service."):
+        super().__init__(message, status_code=500)
+
+
 def extract_error_message(exc: Exception) -> str:
     """Extract a clean human-readable error message from a provider exception."""
     exc_str = str(exc)

@@ -1,13 +1,16 @@
 """
-Example test skeleton. Run with: pytest -q
-Mock the LLM provider so tests don't hit real APIs / cost tokens.
+Run with: pytest -q
+Mocks the LLM providers, the Mongo lookup, and the image download so tests
+never hit real APIs, a real database, or the network.
 """
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from bson import ObjectId
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.llm.base import ImagePayload
 
 client = TestClient(app)
 
@@ -37,15 +40,29 @@ FINAL BCS: 3.00 / 5 (Confidence: High)
 ```
 """
 
+FAKE_ANALYSIS_ID = str(ObjectId())
+FAKE_IMAGE_URLS = [f"https://cdn.example.com/cow-9999/photo-{i}.jpg" for i in range(4)]
+
+
+def fake_analysis_doc(image_urls=FAKE_IMAGE_URLS):
+    return {"_id": ObjectId(FAKE_ANALYSIS_ID), "cow_images": image_urls}
+
+
+def fake_download(url: str, label: str | None = None) -> ImagePayload:
+    return ImagePayload(bytes_data=b"fake-image-bytes", mime_type="image/jpeg", label=label)
+
 
 @pytest.mark.asyncio
 async def test_assess_bcs_fans_out_to_all_providers():
-    fake_bytes = b"fake-image-bytes"
-    files = [("images", ("img1.jpg", fake_bytes, "image/jpeg")) for _ in range(4)]
-
-    # Patch all three providers so no real API calls happen and the test
-    # verifies the fan-out behavior (every model answers independently).
     with (
+        patch(
+            "app.api.endpoints.bcs.get_cow_bcs_analysis",
+            new=AsyncMock(return_value=fake_analysis_doc()),
+        ),
+        patch(
+            "app.api.endpoints.bcs.download_and_validate_image",
+            new=AsyncMock(side_effect=fake_download),
+        ),
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
             new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
@@ -63,7 +80,7 @@ async def test_assess_bcs_fans_out_to_all_providers():
             new=AsyncMock(return_value=None),
         ),
     ):
-        response = client.post("/api/bcs/assess", files=files)
+        response = client.post(f"/api/bcs/assess/{FAKE_ANALYSIS_ID}")
 
     assert response.status_code == 200
     body = response.json()
@@ -80,11 +97,45 @@ async def test_assess_bcs_fans_out_to_all_providers():
 
 
 @pytest.mark.asyncio
-async def test_assess_bcs_can_be_narrowed_to_a_subset():
-    fake_bytes = b"fake-image-bytes"
-    files = [("images", ("img1.jpg", fake_bytes, "image/jpeg")) for _ in range(4)]
-
+async def test_assess_bcs_sends_every_cow_image_in_a_single_call():
+    """All images for the cow must go to each provider in one shared call,
+    not one call per image."""
     with (
+        patch(
+            "app.api.endpoints.bcs.get_cow_bcs_analysis",
+            new=AsyncMock(return_value=fake_analysis_doc()),
+        ),
+        patch(
+            "app.api.endpoints.bcs.download_and_validate_image",
+            new=AsyncMock(side_effect=fake_download),
+        ),
+        patch(
+            "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
+            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+        ) as gemini_mock,
+        patch(
+            "app.services.bcs_service.save_assessment",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        response = client.post(f"/api/bcs/assess/{FAKE_ANALYSIS_ID}?providers=gemini")
+
+    assert response.status_code == 200
+    gemini_mock.assert_called_once()
+    assert len(gemini_mock.call_args.kwargs["images"]) == len(FAKE_IMAGE_URLS)
+
+
+@pytest.mark.asyncio
+async def test_assess_bcs_can_be_narrowed_to_a_subset():
+    with (
+        patch(
+            "app.api.endpoints.bcs.get_cow_bcs_analysis",
+            new=AsyncMock(return_value=fake_analysis_doc()),
+        ),
+        patch(
+            "app.api.endpoints.bcs.download_and_validate_image",
+            new=AsyncMock(side_effect=fake_download),
+        ),
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
             new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
@@ -94,7 +145,7 @@ async def test_assess_bcs_can_be_narrowed_to_a_subset():
             new=AsyncMock(return_value=None),
         ),
     ):
-        response = client.post("/api/bcs/assess?providers=gemini", files=files)
+        response = client.post(f"/api/bcs/assess/{FAKE_ANALYSIS_ID}?providers=gemini")
 
     assert response.status_code == 200
     body = response.json()
@@ -105,3 +156,25 @@ async def test_assess_bcs_can_be_narrowed_to_a_subset():
     assert body["claude"]["confidence"] is None
     assert body["openai"]["final_bcs"] is None
     assert body["openai"]["confidence"] is None
+
+
+@pytest.mark.asyncio
+async def test_assess_bcs_404s_when_analysis_id_does_not_resolve():
+    with patch(
+        "app.api.endpoints.bcs.get_cow_bcs_analysis",
+        new=AsyncMock(return_value=None),
+    ):
+        response = client.post(f"/api/bcs/assess/{FAKE_ANALYSIS_ID}")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_assess_bcs_422s_when_analysis_has_no_cow_images():
+    with patch(
+        "app.api.endpoints.bcs.get_cow_bcs_analysis",
+        new=AsyncMock(return_value=fake_analysis_doc(image_urls=[])),
+    ):
+        response = client.post(f"/api/bcs/assess/{FAKE_ANALYSIS_ID}")
+
+    assert response.status_code == 422

@@ -19,7 +19,7 @@ bcs-fastapi-service/
 │   │   ├── deps.py                  #   shared dependencies (e.g. provider selection)
 │   │   ├── router.py                #   aggregates all endpoint routers
 │   │   └── endpoints/
-│   │       └── bcs.py               #   POST /api/bcs/assess (your 4-image endpoint)
+│   │       └── bcs.py               #   POST /api/bcs/assess/{analysis_id} (Mongo-id-driven, N-image endpoint)
 │   │
 │   ├── schemas/                    # Pydantic request/response contracts
 │   │   └── bcs.py                   #   BCSResponse, BCSAssessment, Landmarks, etc.
@@ -85,10 +85,12 @@ subjective visual task like BCS scoring, or for comparing model quality/cost
 before committing to one in production.
 
 ```
-POST /api/bcs/assess
-Content-Type: multipart/form-data
+POST /api/bcs/assess/{analysis_id}
 
-field: images   (one or more image files, send as multiple `images` parts)
+analysis_id: the _id of a document in the `cow_bcs_analysis` MongoDB collection.
+             That document's `cow_images` field is a list of image URLs -
+             every URL is downloaded and all of them go into the same LLM
+             call (1 image or 10, they're all assessed together as one cow).
 
 optional query param: ?providers=gemini,claude   (default = ALL configured providers)
 ```
