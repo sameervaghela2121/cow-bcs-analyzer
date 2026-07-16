@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const {
-  hashToken, hashPassword, generateAccessToken, generateRefreshToken,
+  hashToken, hashPassword, comparePassword, generateAccessToken, generateRefreshToken,
 } = require('../services/authService');
 
 function serializeUser(user) {
@@ -40,4 +40,28 @@ async function acceptInvite(req, res, next) {
   }
 }
 
-module.exports = { acceptInvite, serializeUser };
+async function login(req, res, next) {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'email and password are required.' });
+    }
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!user || user.status !== 'active' || !user.passwordHash) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+    const valid = await comparePassword(password, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+    res.json({
+      accessToken: generateAccessToken(user),
+      refreshToken: generateRefreshToken(user),
+      user: serializeUser(user),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { acceptInvite, login, serializeUser };

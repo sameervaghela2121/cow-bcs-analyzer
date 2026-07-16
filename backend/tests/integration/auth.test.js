@@ -137,3 +137,44 @@ describe('POST /api/auth/accept-invite', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('POST /api/auth/login', () => {
+  let app;
+  const { hashPassword } = require('../../src/services/authService');
+  const User = require('../../src/models/User');
+
+  beforeAll(async () => { app = createApp(); });
+  afterEach(async () => { await clearDatabase(); });
+
+  it('logs in an active user with the correct password', async () => {
+    await User.create({
+      email: 'active@example.com', name: 'Active', role: 'staff', status: 'active',
+      passwordHash: await hashPassword('correct-password'),
+    });
+    const res = await request(app).post('/api/auth/login').send({
+      email: 'active@example.com', password: 'correct-password',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeTruthy();
+    expect(res.body.user.email).toBe('active@example.com');
+  });
+
+  it('rejects the wrong password', async () => {
+    await User.create({
+      email: 'active2@example.com', name: 'Active Two', role: 'staff', status: 'active',
+      passwordHash: await hashPassword('correct-password'),
+    });
+    const res = await request(app).post('/api/auth/login').send({
+      email: 'active2@example.com', password: 'wrong-password',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects login for a pending (not yet activated) user', async () => {
+    await User.create({ email: 'pend@example.com', name: 'Pend', role: 'staff', status: 'pending' });
+    const res = await request(app).post('/api/auth/login').send({
+      email: 'pend@example.com', password: 'anything',
+    });
+    expect(res.status).toBe(401);
+  });
+});
