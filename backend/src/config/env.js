@@ -10,10 +10,10 @@ module.exports = {
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
+    secure: process.env.SMTP_SECURE === 'true' || false,
     user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-    from: process.env.SMTP_FROM || 'BCS Tracker <no-reply@example.com>',
+    pass: process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '',
+    from: process.env.MAIL_FROM || process.env.SMTP_FROM || 'BCS Tracker <no-reply@example.com>',
   },
   uploadDir: process.env.UPLOAD_DIR || './uploads',
 };

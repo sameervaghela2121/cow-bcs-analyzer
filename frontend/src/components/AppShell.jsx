@@ -13,7 +13,7 @@ export default function AppShell() {
   const { user, logout } = useAuth();
   const [theme, setTheme] = useState('light');
   const isAdmin = user?.role === 'admin';
-  const rootStyle = { ...THEMES[theme], display: 'flex', height: '100vh', width: '100vw', background: 'var(--bg-page)', color: 'var(--text-primary)' };
+  const rootStyle = { ...THEMES[theme], display: 'flex', height: '100%', width: '100%', background: 'var(--bg-page)', color: 'var(--text-primary)' };
   const { data: queueItems } = useQuery({ queryKey: ['review-queue'], queryFn: reviewApi.queue });
   const flaggedCount = queueItems?.length || 0;
 
@@ -35,7 +35,15 @@ export default function AppShell() {
         {isAdmin && (
           <NavLink to="/users" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>User Management</NavLink>
         )}
-        <div className="bcs-sidebar-footer" style={{ marginTop: 'auto', padding: '10px 10px 4px', fontSize: 11, color: '#9a9280' }}>{user?.name}</div>
+        <div className="bcs-sidebar-user" style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '10px', borderRadius: 8, background: '#26362b' }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#33443a', color: '#eee8d8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+            {(user?.name || user?.email || '?').trim().charAt(0).toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#eee8d8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email}</div>
+            <div style={{ fontSize: 10.5, color: '#9a9280', textTransform: 'capitalize' }}>{user?.role}</div>
+          </div>
+        </div>
         <div className="bcs-sidebar-footer" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#c9c2ae', padding: '7px 8px', borderRadius: 6, background: '#26362b' }}>
           <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
           <span>{theme === 'dark' ? '☾' : '☀'}</span>
