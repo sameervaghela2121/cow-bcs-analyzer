@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { THEMES } from '../domain/bcs.js';
+import { reviewApi } from '../api/review.js';
 
 const navBase = { padding: '10px 12px', borderRadius: 8, fontSize: '13.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, color: '#eee8d8', textDecoration: 'none' };
 const navActive = { ...navBase, background: '#33443a' };
@@ -11,6 +13,8 @@ export default function AppShell() {
   const [theme, setTheme] = useState('light');
   const isAdmin = user?.role === 'admin';
   const rootStyle = { ...THEMES[theme], display: 'flex', height: '100vh', width: '100vw', background: 'var(--bg-page)', color: 'var(--text-primary)' };
+  const { data: queueItems } = useQuery({ queryKey: ['review-queue'], queryFn: reviewApi.queue });
+  const flaggedCount = queueItems?.length || 0;
 
   return (
     <div style={rootStyle}>
@@ -18,7 +22,14 @@ export default function AppShell() {
         <div style={{ fontSize: 17, fontWeight: 700, padding: '2px 10px 22px' }}>BCS Tracker</div>
         <NavLink to="/upload" style={({ isActive }) => (isActive ? navActive : navBase)}>Upload</NavLink>
         <NavLink to="/herd" style={({ isActive }) => (isActive ? navActive : navBase)}>Herd</NavLink>
-        <NavLink to="/review" style={({ isActive }) => (isActive ? navActive : navBase)}>Review</NavLink>
+        <NavLink to="/review" style={({ isActive }) => ({ ...(isActive ? navActive : navBase), position: 'relative' })}>
+          Review
+          {flaggedCount > 0 && (
+            <span style={{ background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, minWidth: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', marginLeft: 'auto' }}>
+              {flaggedCount}
+            </span>
+          )}
+        </NavLink>
         <NavLink to="/audit" style={({ isActive }) => (isActive ? navActive : navBase)}>Audit Log</NavLink>
         {isAdmin && (
           <NavLink to="/users" style={({ isActive }) => (isActive ? navActive : navBase)}>User Management</NavLink>

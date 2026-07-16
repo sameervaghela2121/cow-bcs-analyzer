@@ -4,6 +4,7 @@ import AcceptInvitePage from './pages/AcceptInvitePage.jsx';
 import HerdPage from './pages/HerdPage.jsx';
 import CowDetailPage from './pages/CowDetailPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
+import ReviewPage from './pages/ReviewPage.jsx';
 import AppShell from './components/AppShell.jsx';
 import RequireAuth from './auth/RequireAuth.jsx';
 
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/herd" element={<HerdPage />} />
           <Route path="/herd/:cowId" element={<CowDetailPage />} />
+          <Route path="/review" element={<ReviewPage />} />
         </Route>
       </Route>
     </Routes>

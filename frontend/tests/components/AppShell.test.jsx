@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '../../src/auth/AuthContext.jsx';
 import AppShell from '../../src/components/AppShell.jsx';
 
@@ -13,14 +14,17 @@ vi.mock('../../src/auth/AuthContext.jsx', async () => {
 
 describe('AppShell', () => {
   it('shows the User Management nav item for admins', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <MemoryRouter initialEntries={['/herd']}>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route path="/herd" element={<div>Herd content</div>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/herd']}>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="/herd" element={<div>Herd content</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
     );
     expect(screen.getByText('User Management')).toBeInTheDocument();
     expect(screen.getByText('Herd content')).toBeInTheDocument();
