@@ -45,4 +45,28 @@ describe('UploadPage', () => {
     await userEvent.upload(input, file);
     await waitFor(() => expect(screen.getByText(/reading saved/i)).toBeInTheDocument(), { timeout: 5000 });
   });
+
+  it('allows selecting multiple files at once and uploads each as its own reading', async () => {
+    let uploadCalls = 0;
+    server.use(
+      http.post('http://localhost:4000/api/readings', () => {
+        uploadCalls += 1;
+        return HttpResponse.json({ readingId: `r${uploadCalls}`, status: 'processing' }, { status: 202 });
+      }),
+      http.get('http://localhost:4000/api/readings/:id', ({ params }) =>
+        HttpResponse.json({ reading: { id: params.id, status: 'scored', score: 3.25, confidence: 'high', band: 'ideal', flagged: false } })
+      )
+    );
+    renderUpload();
+    await userEvent.type(screen.getByLabelText(/cow id/i), '4417');
+    const input = screen.getByLabelText(/choose file/i, { selector: 'input' });
+    expect(input).toHaveAttribute('multiple');
+    const fileA = new File(['fake-bytes-a'], 'cow-a.jpg', { type: 'image/jpeg' });
+    const fileB = new File(['fake-bytes-b'], 'cow-b.jpg', { type: 'image/jpeg' });
+    await userEvent.upload(input, [fileA, fileB]);
+    await waitFor(() => expect(uploadCalls).toBe(2));
+    await waitFor(() => expect(screen.getAllByText(/reading saved/i)).toHaveLength(2), { timeout: 5000 });
+    expect(screen.getByText('cow-a.jpg')).toBeInTheDocument();
+    expect(screen.getByText('cow-b.jpg')).toBeInTheDocument();
+  });
 });
