@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { AuthProvider } from '../../src/auth/AuthContext.jsx';
@@ -14,8 +14,13 @@ afterAll(() => server.close());
 
 function renderLogin() {
   return render(
-    <MemoryRouter>
-      <AuthProvider><LoginPage /></AuthProvider>
+    <MemoryRouter initialEntries={['/login']}>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/herd" element={<div>Herd page</div>} />
+        </Routes>
+      </AuthProvider>
     </MemoryRouter>
   );
 }
@@ -47,6 +52,6 @@ describe('LoginPage', () => {
     await userEvent.type(screen.getByLabelText(/email/i), 'ok@example.com');
     await userEvent.type(screen.getByLabelText(/password/i), 'correct-password');
     await userEvent.click(screen.getByRole('button', { name: /log in/i }));
-    await waitFor(() => expect(screen.queryByText(/invalid/i)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Herd page')).toBeInTheDocument());
   });
 });

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 
 export default function AcceptInvitePage() {
   const { acceptInvite } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
   const email = searchParams.get('email') || '';
@@ -17,6 +18,7 @@ export default function AcceptInvitePage() {
     setSubmitting(true);
     try {
       await acceptInvite(email, token, password);
+      navigate('/herd', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not activate your account.');
     } finally {

@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { AuthProvider } from '../../src/auth/AuthContext.jsx';
@@ -15,13 +15,18 @@ afterAll(() => server.close());
 function renderPage(search) {
   return render(
     <MemoryRouter initialEntries={[`/accept-invite${search}`]}>
-      <AuthProvider><AcceptInvitePage /></AuthProvider>
+      <AuthProvider>
+        <Routes>
+          <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          <Route path="/herd" element={<div>Herd page</div>} />
+        </Routes>
+      </AuthProvider>
     </MemoryRouter>
   );
 }
 
 describe('AcceptInvitePage', () => {
-  it('submits the token from the URL plus a chosen password', async () => {
+  it('submits the token from the URL, a chosen password, and redirects to /herd', async () => {
     let sentBody;
     server.use(
       http.post('http://localhost:4000/api/auth/accept-invite', async ({ request }) => {
@@ -38,6 +43,7 @@ describe('AcceptInvitePage', () => {
     await waitFor(() => expect(sentBody).toEqual({
       email: 'invitee@example.com', token: 'rawtoken123', password: 'my-new-password',
     }));
+    await waitFor(() => expect(screen.getByText('Herd page')).toBeInTheDocument());
   });
 
   it('shows an error for an expired or invalid invite', async () => {
