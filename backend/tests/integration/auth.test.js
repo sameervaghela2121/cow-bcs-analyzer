@@ -214,3 +214,24 @@ describe('POST /api/auth/refresh and /logout', () => {
     expect(refreshRes.status).toBe(401);
   });
 });
+
+describe('GET /api/auth/me', () => {
+  let app;
+  const { hashPassword } = require('../../src/services/authService');
+  const User = require('../../src/models/User');
+
+  beforeAll(async () => { app = createApp(); });
+  afterEach(async () => { await clearDatabase(); });
+
+  it('returns the current user for a valid access token', async () => {
+    await User.create({
+      email: 'me@example.com', name: 'Me', role: 'admin', status: 'active',
+      passwordHash: await hashPassword('correct-password'),
+    });
+    const login = await request(app).post('/api/auth/login').send({ email: 'me@example.com', password: 'correct-password' });
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${login.body.accessToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe('me@example.com');
+    expect(res.body.role).toBe('admin');
+  });
+});

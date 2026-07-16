@@ -93,4 +93,8 @@ async function logout(req, res, next) {
   }
 }
 
-module.exports = { acceptInvite, login, refresh, logout, serializeUser };
+async function me(req, res) {
+  res.json({ id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role });
+}
+
+module.exports = { acceptInvite, login, refresh, logout, me, serializeUser };
