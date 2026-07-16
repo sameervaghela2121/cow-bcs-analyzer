@@ -178,3 +178,39 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('POST /api/auth/refresh and /logout', () => {
+  let app;
+  const { hashPassword } = require('../../src/services/authService');
+  const User = require('../../src/models/User');
+
+  beforeAll(async () => { app = createApp(); });
+  afterEach(async () => { await clearDatabase(); });
+
+  async function loginAndGetTokens() {
+    await User.create({
+      email: 'refresh@example.com', name: 'Refresh', role: 'staff', status: 'active',
+      passwordHash: await hashPassword('correct-password'),
+    });
+    const res = await request(app).post('/api/auth/login').send({
+      email: 'refresh@example.com', password: 'correct-password',
+    });
+    return res.body;
+  }
+
+  it('issues a new access token from a valid refresh token', async () => {
+    const { refreshToken } = await loginAndGetTokens();
+    const res = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeTruthy();
+  });
+
+  it('invalidates the refresh token after logout', async () => {
+    const { accessToken, refreshToken } = await loginAndGetTokens();
+    const logoutRes = await request(app).post('/api/auth/logout').set('Authorization', `Bearer ${accessToken}`);
+    expect(logoutRes.status).toBe(200);
+
+    const refreshRes = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(refreshRes.status).toBe(401);
+  });
+});
