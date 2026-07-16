@@ -34,4 +34,49 @@ async function countAdmins(excludeUserId) {
   return User.countDocuments(query);
 }
 
-module.exports = { inviteUser, countAdmins, INVITE_TOKEN_TTL_MS };
+async function listUsers({ status, role } = {}) {
+  const query = {};
+  if (status) query.status = status;
+  if (role) query.role = role;
+  return User.find(query).sort({ createdAt: 1 });
+}
+
+async function changeRole(userId, newRole) {
+  const user = await User.findById(userId);
+  if (!user) {
+    const err = new Error('User not found.');
+    err.status = 404;
+    throw err;
+  }
+  if (user.role === 'admin' && newRole !== 'admin') {
+    const remaining = await countAdmins(userId);
+    if (remaining === 0) {
+      const err = new Error('Cannot demote the last remaining admin.');
+      err.status = 400;
+      throw err;
+    }
+  }
+  user.role = newRole;
+  await user.save();
+  return user;
+}
+
+async function removeUser(userId) {
+  const user = await User.findById(userId);
+  if (!user) {
+    const err = new Error('User not found.');
+    err.status = 404;
+    throw err;
+  }
+  if (user.role === 'admin') {
+    const remaining = await countAdmins(userId);
+    if (remaining === 0) {
+      const err = new Error('Cannot remove the last remaining admin.');
+      err.status = 400;
+      throw err;
+    }
+  }
+  await User.deleteOne({ _id: userId });
+}
+
+module.exports = { inviteUser, countAdmins, listUsers, changeRole, removeUser, INVITE_TOKEN_TTL_MS };

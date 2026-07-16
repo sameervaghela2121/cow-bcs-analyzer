@@ -14,16 +14,23 @@ function tokenFor(user) {
   return jwt.sign({ sub: user._id.toString(), role: user.role }, config.jwtAccessSecret, { expiresIn: '15m' });
 }
 
+// connect()/closeDatabase() are hoisted to file scope rather than scoped to
+// the first describe (as auth.test.js originally had it, and this file
+// accumulates a new describe per task the same way — see Task 7's fix in
+// auth.test.js for the "closes shared connection too early" failure mode
+// this avoids).
+beforeAll(async () => { await connect(); });
+afterAll(async () => { await closeDatabase(); });
+
 describe('POST /api/users/invite', () => {
   let app, admin, adminToken;
 
-  beforeAll(async () => { await connect(); app = createApp(); });
+  beforeAll(async () => { app = createApp(); });
   beforeEach(async () => {
     admin = await User.create({ email: 'admin@example.com', name: 'Admin', role: 'admin', status: 'active', passwordHash: 'x' });
     adminToken = tokenFor(admin);
   });
   afterEach(async () => { await clearDatabase(); jest.clearAllMocks(); });
-  afterAll(async () => { await closeDatabase(); });
 
   it('rejects non-admins', async () => {
     const staff = await User.create({ email: 'staff@example.com', name: 'Staff', role: 'staff', status: 'active', passwordHash: 'x' });
@@ -57,5 +64,52 @@ describe('POST /api/users/invite', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ email: 'dup@example.com', name: 'Dup Two', role: 'staff' });
     expect(res.status).toBe(409);
+  });
+});
+
+describe('GET/PATCH/DELETE /api/users', () => {
+  let app, admin, adminToken;
+  beforeAll(async () => { app = createApp(); });
+  beforeEach(async () => {
+    admin = await User.create({ email: 'admin2@example.com', name: 'Admin2', role: 'admin', status: 'active', passwordHash: 'x' });
+    adminToken = tokenFor(admin);
+  });
+  afterEach(async () => { await clearDatabase(); jest.clearAllMocks(); });
+
+  it('lists users', async () => {
+    await User.create({ email: 'a@example.com', name: 'A', role: 'staff', status: 'active', passwordHash: 'x' });
+    const res = await request(app).get('/api/users').set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.users.length).toBe(2);
+  });
+
+  it('changes a user role', async () => {
+    const staff = await User.create({ email: 'b@example.com', name: 'B', role: 'staff', status: 'active', passwordHash: 'x' });
+    const res = await request(app)
+      .patch(`/api/users/${staff._id}/role`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ role: 'admin' });
+    expect(res.status).toBe(200);
+    expect(res.body.user.role).toBe('admin');
+  });
+
+  it('refuses to demote the last remaining admin', async () => {
+    const res = await request(app)
+      .patch(`/api/users/${admin._id}/role`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ role: 'staff' });
+    expect(res.status).toBe(400);
+  });
+
+  it('removes a user', async () => {
+    const staff = await User.create({ email: 'c@example.com', name: 'C', role: 'staff', status: 'active', passwordHash: 'x' });
+    const res = await request(app).delete(`/api/users/${staff._id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(await User.findById(staff._id)).toBeNull();
+  });
+
+  it('refuses to remove the last remaining admin', async () => {
+    const res = await request(app).delete(`/api/users/${admin._id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
   });
 });
