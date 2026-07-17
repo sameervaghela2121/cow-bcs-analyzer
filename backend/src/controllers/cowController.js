@@ -10,6 +10,7 @@ function serializeCow(cow, latestAnalysis) {
     updatedAt: cow.updatedAt,
     latestAnalysisStatus: latestAnalysis?.status ?? null,
     latestAnalysisAt: latestAnalysis?.createdAt ?? null,
+    latestAnalysisIsApproved: latestAnalysis?.is_approved ?? null,
   };
 }
 
@@ -51,7 +52,14 @@ async function list(req, res, next) {
     const latestAnalysisByCow = await BcsAnalysis.aggregate([
       { $match: { cow: { $in: cows.map((c) => c._id) } } },
       { $sort: { createdAt: -1 } },
-      { $group: { _id: '$cow', status: { $first: '$status' }, createdAt: { $first: '$createdAt' } } },
+      {
+        $group: {
+          _id: '$cow',
+          status: { $first: '$status' },
+          createdAt: { $first: '$createdAt' },
+          is_approved: { $first: '$is_approved' },
+        },
+      },
     ]);
     const latestById = new Map(latestAnalysisByCow.map((d) => [d._id.toString(), d]));
 

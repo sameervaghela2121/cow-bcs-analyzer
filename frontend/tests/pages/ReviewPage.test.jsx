@@ -25,9 +25,10 @@ function renderReview() {
   );
 }
 
-// Mutates the same analysesByCow objects on approve/override, so a refetch
-// after the mutation (query invalidation) reflects what was persisted - same
-// as hitting the real backend.
+// Mutates the same cows/analysesByCow objects on approve/override, so a
+// refetch after the mutation (query invalidation) reflects what was
+// persisted - same as hitting the real backend, including the cow-level
+// latestAnalysisIsApproved flag that ReviewPage filters the list on.
 function findAnalysis(analysesByCow, id) {
   for (const analyses of Object.values(analysesByCow)) {
     const match = analyses.find((a) => a.id === id);
@@ -46,6 +47,9 @@ function mockCowsAndAnalyses({ cows, analysesByCow }) {
       const match = findAnalysis(analysesByCow, params.id);
       if (!match) return new HttpResponse(null, { status: 404 });
       match.is_approved = true;
+      const [cowsId] = Object.entries(analysesByCow).find(([, analyses]) => analyses.includes(match)) || [];
+      const cow = cows.find((c) => c.cowsId === cowsId);
+      if (cow) cow.latestAnalysisIsApproved = true;
       return HttpResponse.json({ bcsAnalysis: match });
     }),
     http.patch('http://localhost:4000/api/bcs-analysis/:id/override', async ({ params, request }) => {
@@ -61,18 +65,18 @@ function mockCowsAndAnalyses({ cows, analysesByCow }) {
 describe('ReviewPage', () => {
   it('shows the empty state when no cow has a completed analysis', async () => {
     mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'processing' }],
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'processing', latestAnalysisIsApproved: false }],
       analysesByCow: {},
     });
     renderReview();
-    await waitFor(() => expect(screen.getByText(/no completed analyses/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/nothing waiting for review/i)).toBeInTheDocument());
   });
 
-  it('shows only cows whose latest analysis is completed, with the mean BCS score', async () => {
+  it('shows only cows whose latest analysis is completed and not yet approved, with the mean BCS score', async () => {
     mockCowsAndAnalyses({
       cows: [
-        { id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' },
-        { id: 'c2', cowsId: '5001', latestAnalysisStatus: 'processing' },
+        { id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false },
+        { id: 'c2', cowsId: '5001', latestAnalysisStatus: 'processing', latestAnalysisIsApproved: false },
       ],
       analysesByCow: {
         4417: [{
@@ -87,10 +91,25 @@ describe('ReviewPage', () => {
     expect(screen.getByText('3.25')).toBeInTheDocument();
   });
 
+  it('does not show a cow whose latest analysis has already been approved', async () => {
+    mockCowsAndAnalyses({
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: true }],
+      analysesByCow: {
+        4417: [{
+          id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [], is_approved: true,
+        }],
+      },
+    });
+    renderReview();
+    await waitFor(() => expect(screen.getByText(/nothing waiting for review/i)).toBeInTheDocument());
+    expect(screen.queryByText('Cow 4417')).not.toBeInTheDocument();
+  });
+
   it('prefills the override stepper with the mean BCS score, and confirming persists it via PATCH /override', async () => {
     let overrideBody;
     mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
       analysesByCow: {
         4417: [{
           id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
@@ -123,11 +142,14 @@ describe('ReviewPage', () => {
     expect(screen.getByText('3.5')).toBeInTheDocument();
     expect(screen.getByText(/overridden from 3.25/i)).toBeInTheDocument();
     await waitFor(() => expect(overrideBody).toEqual({ score: 3.5 }));
+
+    // overriding doesn't touch is_approved - the row must still be here
+    expect(screen.getByText('Cow 4417')).toBeInTheDocument();
   });
 
-  it('approving calls PATCH /bcs-analysis/:id/approve and keeps the mean score as-is - overriding is not mandatory', async () => {
+  it('approving calls PATCH /bcs-analysis/:id/approve, then the row disappears once the list reflects it', async () => {
     mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
       analysesByCow: {
         4417: [{
           id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
@@ -140,54 +162,13 @@ describe('ReviewPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
 
-    await waitFor(() => expect(screen.getByText(/approved as-is/i)).toBeInTheDocument());
-    expect(screen.getByText('3.25')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^approved$/i })).toBeInTheDocument();
-  });
-
-  it('shows Approved immediately for a cow whose latest analysis was already approved earlier', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
-      analysesByCow: {
-        4417: [{
-          id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
-          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [], is_approved: true,
-        }],
-      },
-    });
-    renderReview();
-    await waitFor(() => expect(screen.getByText(/approved as-is/i)).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /^approved$/i })).toBeInTheDocument();
-  });
-
-  it('overriding after approving shows the overridden value instead of the approved state', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
-      analysesByCow: {
-        4417: [{
-          id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
-          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [], is_approved: false,
-        }],
-      },
-    });
-    renderReview();
-    await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
-    await waitFor(() => expect(screen.getByText(/approved as-is/i)).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole('button', { name: /override/i }));
-    await userEvent.click(screen.getByRole('button', { name: '+' }));
-    await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
-
-    expect(screen.getByText('3.5')).toBeInTheDocument();
-    expect(screen.getByText(/overridden from 3.25/i)).toBeInTheDocument();
-    expect(screen.queryByText(/approved as-is/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Cow 4417')).not.toBeInTheDocument());
+    expect(screen.getByText(/nothing waiting for review/i)).toBeInTheDocument();
   });
 
   it('navigates to the cow detail page when a row is clicked', async () => {
     mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
       analysesByCow: {
         4417: [{
           id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',

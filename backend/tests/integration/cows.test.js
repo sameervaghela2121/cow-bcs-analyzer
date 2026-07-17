@@ -102,6 +102,30 @@ describe('GET /api/cows (herd list)', () => {
     const res = await request(app).get('/api/cows?search=1002').set('Authorization', `Bearer ${token}`);
     expect(res.body.cows[0].latestAnalysisStatus).toBe('completed');
   });
+
+  it('surfaces whether the most recent analysis has been approved', async () => {
+    const user = await User.findOne({ email: 'herd@example.com' });
+    const cow = await Cow.findOne({ cowsId: '1003' });
+    await BcsAnalysis.create({
+      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
+      status: 'completed', is_approved: true, createdBy: user._id, updatedBy: user._id,
+    });
+
+    const res = await request(app).get('/api/cows?search=1003').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestAnalysisIsApproved).toBe(true);
+  });
+
+  it('defaults latestAnalysisIsApproved to false for a completed-but-unreviewed analysis', async () => {
+    const user = await User.findOne({ email: 'herd@example.com' });
+    const cow = await Cow.findOne({ cowsId: '1001' });
+    await BcsAnalysis.create({
+      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1001/ts/a.jpg'],
+      status: 'completed', createdBy: user._id, updatedBy: user._id,
+    });
+
+    const res = await request(app).get('/api/cows?search=1001').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestAnalysisIsApproved).toBe(false);
+  });
 });
 
 describe('GET /api/cows/:cowsId/analyses', () => {

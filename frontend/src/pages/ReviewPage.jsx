@@ -53,6 +53,11 @@ function ReviewRow({ cow }) {
     onSuccess: () => {
       setOverriddenScore(null);
       invalidate();
+      // The cows list (not just this row's own analyses) carries
+      // latestAnalysisIsApproved, which is what ReviewPage filters on to
+      // drop a row once it's approved - refresh it too, or this row would
+      // stick around showing "Approved" instead of actually disappearing.
+      queryClient.invalidateQueries({ queryKey: ['cows'] });
     },
   });
 
@@ -144,18 +149,22 @@ function ReviewRow({ cow }) {
 
 export default function ReviewPage() {
   const { data } = useQuery({ queryKey: ['cows'], queryFn: () => cowsApi.list() });
-  const cows = (data?.cows || []).filter((cow) => cow.latestAnalysisStatus === 'completed');
+  // Once approved, a cow drops off this list entirely - only completed,
+  // not-yet-approved analyses need a reviewer's attention.
+  const cows = (data?.cows || []).filter(
+    (cow) => cow.latestAnalysisStatus === 'completed' && !cow.latestAnalysisIsApproved
+  );
 
   return (
     <div style={{ padding: '32px 28px 60px' }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Review</h1>
       <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 22px' }}>
-        Each cow's most recently completed analysis, with its mean BCS score across every model that answered.
+        Completed analyses waiting for a reviewer - approve or override the mean BCS score, and it drops off this list.
       </p>
 
       {cows.length === 0 && (
         <div style={{ background: '#fff', border: '1px dashed #d8d2c2', borderRadius: 12, padding: 40, textAlign: 'center', color: '#82796a' }}>
-          No completed analyses to review yet.
+          Nothing waiting for review right now.
         </div>
       )}
 
