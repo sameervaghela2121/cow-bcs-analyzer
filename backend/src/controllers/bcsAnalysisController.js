@@ -47,6 +47,7 @@ async function serializeBcsAnalysis(doc) {
     bcsScore: doc.bcsScore,
     status: doc.status,
     errorMessage: doc.errorMessage,
+    is_approved: doc.is_approved,
     createdBy: doc.createdBy.toString(),
     updatedBy: doc.updatedBy.toString(),
     createdAt: doc.createdAt,
@@ -126,4 +127,26 @@ async function getOne(req, res, next) {
   }
 }
 
-module.exports = { generateUploadUrls, create, getOne, serializeBcsAnalysis };
+async function approve(req, res, next) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'BCS analysis record not found.' });
+    }
+    const analysis = await BcsAnalysis.findById(id);
+    if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
+    if (analysis.status !== 'completed') {
+      return res.status(409).json({ error: 'Only a completed analysis can be approved.' });
+    }
+
+    analysis.is_approved = true;
+    analysis.updatedBy = req.user.id;
+    await analysis.save();
+
+    res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { generateUploadUrls, create, getOne, approve, serializeBcsAnalysis };

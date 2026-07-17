@@ -25,12 +25,25 @@ function renderReview() {
   );
 }
 
+// Mutates the same analysesByCow objects on approve, so a refetch after the
+// mutation (query invalidation) reflects the persisted is_approved - same as
+// hitting the real backend.
 function mockCowsAndAnalyses({ cows, analysesByCow }) {
   server.use(
     http.get('http://localhost:4000/api/cows', () => HttpResponse.json({ cows, total: cows.length })),
     http.get('http://localhost:4000/api/cows/:cowsId/analyses', ({ params }) =>
       HttpResponse.json({ bcsAnalyses: analysesByCow[params.cowsId] || [], total: (analysesByCow[params.cowsId] || []).length })
-    )
+    ),
+    http.patch('http://localhost:4000/api/bcs-analysis/:id/approve', ({ params }) => {
+      for (const analyses of Object.values(analysesByCow)) {
+        const match = analyses.find((a) => a.id === params.id);
+        if (match) {
+          match.is_approved = true;
+          return HttpResponse.json({ bcsAnalysis: match });
+        }
+      }
+      return new HttpResponse(null, { status: 404 });
+    })
   );
 }
 
@@ -53,7 +66,7 @@ describe('ReviewPage', () => {
       analysesByCow: {
         4417: [{
           id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
-          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: ['https://example.com/a1.jpg'],
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: ['https://example.com/a1.jpg'], is_approved: false,
         }],
       },
     });
@@ -69,7 +82,7 @@ describe('ReviewPage', () => {
       analysesByCow: {
         4417: [{
           id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
-          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [],
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [], is_approved: false,
         }],
       },
     });
@@ -88,13 +101,13 @@ describe('ReviewPage', () => {
     expect(screen.getByText(/overridden from 3.25/i)).toBeInTheDocument();
   });
 
-  it('approving keeps the mean score as-is - overriding is not mandatory', async () => {
+  it('approving calls PATCH /bcs-analysis/:id/approve and keeps the mean score as-is - overriding is not mandatory', async () => {
     mockCowsAndAnalyses({
       cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
       analysesByCow: {
         4417: [{
           id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
-          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [],
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [], is_approved: false,
         }],
       },
     });
@@ -102,18 +115,34 @@ describe('ReviewPage', () => {
     await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+
+    await waitFor(() => expect(screen.getByText(/approved as-is/i)).toBeInTheDocument());
     expect(screen.getByText('3.25')).toBeInTheDocument();
-    expect(screen.getByText(/approved as-is/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^approved$/i })).toBeInTheDocument();
   });
 
-  it('overriding after approving discards the approval and shows the overridden value instead', async () => {
+  it('shows Approved immediately for a cow whose latest analysis was already approved earlier', async () => {
     mockCowsAndAnalyses({
       cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
       analysesByCow: {
         4417: [{
           id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
-          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [],
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [], is_approved: true,
+        }],
+      },
+    });
+    renderReview();
+    await waitFor(() => expect(screen.getByText(/approved as-is/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /^approved$/i })).toBeInTheDocument();
+  });
+
+  it('overriding after approving shows the overridden value instead of the approved state', async () => {
+    mockCowsAndAnalyses({
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
+      analysesByCow: {
+        4417: [{
+          id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [], is_approved: false,
         }],
       },
     });
@@ -121,7 +150,7 @@ describe('ReviewPage', () => {
     await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
-    expect(screen.getByText(/approved as-is/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/approved as-is/i)).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: /override/i }));
     await userEvent.click(screen.getByRole('button', { name: '+' }));
@@ -138,7 +167,7 @@ describe('ReviewPage', () => {
       analysesByCow: {
         4417: [{
           id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
-          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [],
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [], is_approved: false,
         }],
       },
     });

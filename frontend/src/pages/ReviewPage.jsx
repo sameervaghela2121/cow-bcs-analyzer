@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { cowsApi } from '../api/cows.js';
+import { bcsAnalysisApi } from '../api/bcsAnalysis.js';
 import Badge from '../components/Badge.jsx';
 import { formatScore } from '../domain/bcs.js';
 
@@ -12,13 +13,14 @@ function roundQuarter(n) {
   return Math.round(n * 4) / 4;
 }
 
-// Backend has no override-persistence endpoint yet (the review workflow was
-// dropped in the schema overhaul and hasn't been rebuilt) - Override is a
-// local-only adjustment for now: it changes what this row displays, but
-// nothing is saved anywhere. Re-wire confirmOverride to a real API call once
-// that endpoint exists.
+// Backend has no override-persistence endpoint yet - Override is still a
+// local-only adjustment: it changes what this row displays, but nothing is
+// saved. Approve, though, is real - PATCH /bcs-analysis/:id/approve sets
+// is_approved on the record itself, which is what drives this row's
+// "Approved as-is" state (not local component state).
 function ReviewRow({ cow }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ['cow-analyses', cow.cowsId],
     queryFn: () => cowsApi.analyses(cow.cowsId),
@@ -32,26 +34,28 @@ function ReviewRow({ cow }) {
   const [editing, setEditing] = useState(false);
   const [tempScore, setTempScore] = useState(0);
   const [overriddenScore, setOverriddenScore] = useState(null);
-  const [approved, setApproved] = useState(false);
+
+  const approveMutation = useMutation({
+    mutationFn: () => bcsAnalysisApi.approve(latest.id),
+    onSuccess: () => {
+      setOverriddenScore(null);
+      queryClient.invalidateQueries({ queryKey: ['cow-analyses', cow.cowsId] });
+    },
+  });
 
   if (!latest) return null;
+  // Overriding is a newer, local-only decision than whatever is_approved
+  // says on the record - if the user just picked a different value, that
+  // takes visual priority over a possibly-stale "approved" from the server.
+  const isApproved = latest.is_approved && overriddenScore == null;
   const displayedScore = overriddenScore ?? meanScore;
 
   function goToCow() {
     navigate(`/herd/${cow.cowsId}`);
   }
 
-  // Approving isn't mandatory - the mean score stands as-is by default.
-  // Approve just confirms that explicitly (discarding any pending override,
-  // since the two are mutually exclusive outcomes for the same row).
-  function handleApprove() {
-    setOverriddenScore(null);
-    setApproved(true);
-  }
-
   function startOverride() {
     setTempScore(meanScore ?? 3);
-    setApproved(false);
     setEditing(true);
   }
 
@@ -66,11 +70,14 @@ function ReviewRow({ cow }) {
       <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={goToCow}>
         <div style={{ fontSize: '14.5px', fontWeight: 700 }}>Cow {cow.cowsId}</div>
         <div style={{ fontSize: '12.5px', color: '#82796a' }}>Last analyzed {fmtDate(latest.createdAt)}</div>
-        {approved && (
+        {isApproved && (
           <div style={{ fontSize: '11.5px', color: '#166534', fontWeight: 600 }}>Approved as-is</div>
         )}
-        {!approved && overriddenScore != null && (
+        {!isApproved && overriddenScore != null && (
           <div style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 600 }}>Overridden from {formatScore(meanScore)}</div>
+        )}
+        {approveMutation.isError && (
+          <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Approve failed - try again.</div>
         )}
       </div>
 
@@ -86,13 +93,14 @@ function ReviewRow({ cow }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Badge score={displayedScore} />
           <button
-            onClick={handleApprove}
+            onClick={() => approveMutation.mutate()}
+            disabled={approveMutation.isPending}
             style={{
               padding: '8px 14px', borderRadius: 7, border: '1px solid #166534', cursor: 'pointer', fontWeight: 700,
-              background: approved ? '#166534' : '#fff', color: approved ? '#fff' : '#166534',
+              background: isApproved ? '#166534' : '#fff', color: isApproved ? '#fff' : '#166534',
             }}
           >
-            {approved ? 'Approved' : 'Approve'}
+            {isApproved ? 'Approved' : approveMutation.isPending ? 'Approving…' : 'Approve'}
           </button>
           <button
             onClick={startOverride}
