@@ -42,11 +42,13 @@ async function list(req, res, next) {
     const query = {};
     if (search && search.trim()) query.cowsId = { $regex: search.trim(), $options: 'i' };
 
-    const total = await Cow.countDocuments(query);
-    const cows = await Cow.find(query)
-      .sort({ createdAt: -1 })
-      .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit));
+    const [total, cows] = await Promise.all([
+      Cow.countDocuments(query),
+      Cow.find(query)
+        .sort({ createdAt: -1 })
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit)),
+    ]);
 
     const latestAnalysisByCow = await BcsAnalysis.aggregate([
       { $match: { cow: { $in: cows.map((c) => c._id) } } },

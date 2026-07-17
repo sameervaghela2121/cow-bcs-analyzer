@@ -5,7 +5,7 @@ import { cowsApi } from '../api/cows.js';
 import StatusPill from '../components/StatusPill.jsx';
 import { PENDING_STATUSES } from '../domain/analysisStatus.js';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 export default function HerdPage() {
   const navigate = useNavigate();
