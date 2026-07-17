@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ImagePlus, UploadCloud, X } from 'lucide-react';
+import { Check, ImagePlus, UploadCloud, X } from 'lucide-react';
 import { bcsAnalysisApi, putFileToGcs, analyzeBcsRecord } from '../api/bcsAnalysis.js';
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const SAFE_COWS_ID = /^[A-Za-z0-9._-]{1,128}$/;
 const EXTENSION_BY_TYPE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
+const PHASE_LABEL = {
+  preparing: 'Preparing upload…',
+  uploading: 'Uploading to storage…',
+  finalizing: 'Saving…',
+};
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -21,7 +27,10 @@ function safeFilename(file, index) {
   return `photo-${index + 1}.${ext}`;
 }
 
-function FilePreview({ file, onRemove }) {
+// `progress` is only passed once the batch is uploading (0-100). Left
+// undefined in the editable pre-submit list, where the remove button shows
+// instead.
+function FilePreview({ file, onRemove, progress }) {
   const [previewUrl, setPreviewUrl] = useState(null);
 
   useEffect(() => {
@@ -32,20 +41,27 @@ function FilePreview({ file, onRemove }) {
 
   return (
     <div style={{ position: 'relative', width: 96 }}>
-      <div style={{ width: 96, height: 96, borderRadius: 10, overflow: 'hidden', background: '#efece1', border: '1px solid #e5e0d3' }}>
+      <div style={{ width: 96, height: 96, borderRadius: 10, overflow: 'hidden', background: '#efece1', border: '1px solid #e5e0d3', position: 'relative' }}>
         {previewUrl && <img src={previewUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+        {progress != null && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(28,42,32,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {progress >= 100 ? <Check size={26} color="#fff" /> : <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{progress}%</span>}
+          </div>
+        )}
       </div>
-      <button
-        onClick={onRemove}
-        title="Remove"
-        style={{
-          position: 'absolute', top: -7, right: -7, width: 22, height: 22, borderRadius: '50%',
-          border: '2px solid #fff', background: '#1c2a20', color: '#fff', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-        }}
-      >
-        <X size={12} />
-      </button>
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          title="Remove"
+          style={{
+            position: 'absolute', top: -7, right: -7, width: 22, height: 22, borderRadius: '50%',
+            border: '2px solid #fff', background: '#1c2a20', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+          }}
+        >
+          <X size={12} />
+        </button>
+      )}
       <div style={{ fontSize: 11, color: '#82796a', marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {file.name}
       </div>
@@ -62,8 +78,14 @@ export default function UploadPage() {
   const [pendingFiles, setPendingFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [phase, setPhase] = useState(null); // 'preparing' | 'uploading' | 'finalizing'
+  const [uploadProgress, setUploadProgress] = useState({}); // fileId -> { loaded, total }
 
   const locked = submitting;
+
+  const uploadedBytes = Object.values(uploadProgress).reduce((sum, p) => sum + p.loaded, 0);
+  const totalBytes = Object.values(uploadProgress).reduce((sum, p) => sum + p.total, 0);
+  const uploadPercent = totalBytes > 0 ? Math.round((uploadedBytes / totalBytes) * 100) : 0;
 
   function handleFiles(fileList) {
     const incoming = Array.from(fileList);
@@ -117,6 +139,8 @@ export default function UploadPage() {
     }
     setError(null);
     setSubmitting(true);
+    setPhase('preparing');
+    setUploadProgress({});
     try {
       const namedFiles = pendingFiles.map(({ file }, i) => ({ file, filename: safeFilename(file, i) }));
 
@@ -127,11 +151,25 @@ export default function UploadPage() {
         files: namedFiles.map(({ file, filename }) => ({ filename, contentType: file.type })),
       });
 
-      // 2. Upload every file straight to GCS. If any one fails, abort before
-      //    creating a record that would reference a missing image.
-      await Promise.all(uploads.map((upload, i) => putFileToGcs(upload.uploadUrl, namedFiles[i].file)));
+      // 2. Upload every file straight to GCS in parallel, tracking bytes sent
+      //    per file so the UI can show a real aggregate percentage. If any
+      //    one fails, abort before creating a record that would reference a
+      //    missing image.
+      setPhase('uploading');
+      setUploadProgress(
+        Object.fromEntries(pendingFiles.map((f, i) => [f.id, { loaded: 0, total: namedFiles[i].file.size }]))
+      );
+      await Promise.all(
+        uploads.map((upload, i) => {
+          const fileId = pendingFiles[i].id;
+          return putFileToGcs(upload.uploadUrl, namedFiles[i].file, (loaded, total) => {
+            setUploadProgress((prev) => ({ ...prev, [fileId]: { loaded, total } }));
+          });
+        })
+      );
 
       // 3. Create the bcs_analysis record referencing the uploaded images.
+      setPhase('finalizing');
       const analysis = await bcsAnalysisApi.create({
         cowsId,
         cowsImages: uploads.map((u) => u.gsUri),
@@ -146,10 +184,14 @@ export default function UploadPage() {
         // best-effort trigger - the detail page is the source of truth from here
       }
 
-      navigate(`/herd/${cowsId}`);
+      // Land on the herd grid (not this cow's own detail page) so the user
+      // sees its status pill update alongside every other cow, rather than
+      // being dropped into a single-cow view right after uploading.
+      navigate('/herd');
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Upload failed.');
       setSubmitting(false);
+      setPhase(null);
     }
   }
 
@@ -225,8 +267,35 @@ export default function UploadPage() {
             disabled={submitting}
             style={{ width: '100%', padding: '13px 20px', borderRadius: 8, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, marginTop: 20 }}
           >
-            {submitting ? 'Uploading…' : `Score ${pendingFiles.length} photo${pendingFiles.length === 1 ? '' : 's'}`}
+            Score {pendingFiles.length} photo{pendingFiles.length === 1 ? '' : 's'}
           </button>
+        )}
+
+        {locked && (
+          <div style={{ marginTop: 4 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>
+              {pendingFiles.map((item) => {
+                const p = uploadProgress[item.id];
+                const pct =
+                  phase === 'uploading' ? (p && p.total > 0 ? Math.round((p.loaded / p.total) * 100) : 0) : phase === 'finalizing' ? 100 : 0;
+                return <FilePreview key={item.id} file={item.file} progress={pct} />;
+              })}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: 'flex', justifyContent: 'space-between', color: '#3c372c' }}>
+              <span>{PHASE_LABEL[phase] || 'Uploading…'}</span>
+              {phase === 'uploading' && <span>{uploadPercent}%</span>}
+            </div>
+            <div style={{ height: 8, borderRadius: 999, background: '#efece1', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${phase === 'uploading' ? uploadPercent : phase === 'finalizing' ? 100 : 8}%`,
+                  background: '#1c2a20',
+                  transition: 'width 0.25s ease',
+                }}
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>

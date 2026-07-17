@@ -14,18 +14,33 @@ export const bcsAnalysisApi = {
 };
 
 // Uploads go straight to GCS via a signed URL, never through the Node
-// backend - plain fetch on purpose, so apiClient's Authorization header
+// backend - a raw request on purpose, so apiClient's Authorization header
 // (our own API bearer token) is never sent to storage.googleapis.com.
 // contentType must match exactly what the signed URL was generated with.
-export async function putFileToGcs(uploadUrl, file) {
-  const res = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type },
-    body: file,
+//
+// XMLHttpRequest instead of fetch: fetch has no upload-progress event, only
+// XHR's `upload.onprogress` reports bytes sent as a large image streams to
+// GCS, which is what lets the UI show a real percentage instead of just an
+// indeterminate spinner.
+export function putFileToGcs(uploadUrl, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl);
+    xhr.setRequestHeader('Content-Type', file.type);
+    xhr.upload.onprogress = (e) => {
+      onProgress?.(e.loaded, e.lengthComputable ? e.total : file.size);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(file.size, file.size);
+        resolve();
+      } else {
+        reject(new Error(`Upload to storage failed (${xhr.status}) for ${file.name}.`));
+      }
+    };
+    xhr.onerror = () => reject(new Error(`Upload to storage failed (network error) for ${file.name}.`));
+    xhr.send(file);
   });
-  if (!res.ok) {
-    throw new Error(`Upload to storage failed (${res.status}) for ${file.name}.`);
-  }
 }
 
 // The AI backend is called directly from the browser, not through Node -

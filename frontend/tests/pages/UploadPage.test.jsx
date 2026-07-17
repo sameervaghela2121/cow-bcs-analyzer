@@ -18,7 +18,7 @@ function renderUpload() {
       <MemoryRouter initialEntries={['/upload']}>
         <Routes>
           <Route path="/upload" element={<UploadPage />} />
-          <Route path="/herd/:cowsId" element={<div>Cow detail page</div>} />
+          <Route path="/herd" element={<div>Herd page</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -40,7 +40,7 @@ describe('UploadPage', () => {
     expect(screen.getByText(/enter a cow id/i)).toBeInTheDocument();
   });
 
-  it('uploads a batch of photos straight to GCS, creates one analysis record, triggers analysis, and navigates to the cow detail page', async () => {
+  it('uploads a batch of photos straight to GCS, creates one analysis record, triggers analysis, and navigates to the herd page', async () => {
     let uploadUrlCalls = 0;
     let putCalls = 0;
     let createCalls = 0;
@@ -91,7 +91,7 @@ describe('UploadPage', () => {
 
     await user.click(screen.getByRole('button', { name: /score 2 photos/i }));
 
-    await waitFor(() => expect(screen.getByText(/cow detail page/i)).toBeInTheDocument(), { timeout: 5000 });
+    await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
 
     expect(uploadUrlCalls).toBe(1);
     expect(putCalls).toBe(2);
@@ -99,7 +99,7 @@ describe('UploadPage', () => {
     expect(analyzeCalls).toBe(1);
   });
 
-  it('still navigates to the detail page even if triggering analysis fails, since the record already exists', async () => {
+  it('still navigates to the herd page even if triggering analysis fails, since the record already exists', async () => {
     server.use(
       http.post('http://localhost:4000/api/bcs-analysis/upload-urls', async ({ request }) => {
         const body = await request.json();
@@ -131,7 +131,7 @@ describe('UploadPage', () => {
     await user.upload(input, file);
     await user.click(screen.getByRole('button', { name: /score 1 photo/i }));
 
-    await waitFor(() => expect(screen.getByText(/cow detail page/i)).toBeInTheDocument(), { timeout: 5000 });
+    await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
   });
 
   it('rejects a Cow ID with unsafe characters before calling the API', async () => {
