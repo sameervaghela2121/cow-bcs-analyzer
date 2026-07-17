@@ -58,9 +58,11 @@ One document per upload batch (however many photos the user selects in one go). 
 {
   _id, email, name, role: 'admin'|'staff', status: 'pending'|'active',
   passwordHash, inviteTokenHash, inviteTokenExpiresAt, invitedBy: ObjectId,
-  refreshTokenVersion, createdAt, updatedAt,
+  createdAt, updatedAt,
 }
 ```
+Access tokens (`JWT_ACCESS_SECRET`) are issued with no expiry and there is no refresh token/flow -
+login once, stay signed in until an explicit logout clears the client's stored token.
 
 ### `invitations` — new, append-only log
 

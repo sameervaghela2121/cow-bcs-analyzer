@@ -1,7 +1,5 @@
 const User = require('../models/User');
-const {
-  hashToken, hashPassword, comparePassword, generateAccessToken, generateRefreshToken, verifyRefreshToken,
-} = require('../services/authService');
+const { hashToken, hashPassword, comparePassword, generateAccessToken } = require('../services/authService');
 
 function serializeUser(user) {
   return { id: user._id.toString(), email: user.email, name: user.name, role: user.role, status: user.status };
@@ -32,7 +30,6 @@ async function acceptInvite(req, res, next) {
 
     res.json({
       accessToken: generateAccessToken(user),
-      refreshToken: generateRefreshToken(user),
       user: serializeUser(user),
     });
   } catch (err) {
@@ -56,7 +53,6 @@ async function login(req, res, next) {
     }
     res.json({
       accessToken: generateAccessToken(user),
-      refreshToken: generateRefreshToken(user),
       user: serializeUser(user),
     });
   } catch (err) {
@@ -64,37 +60,16 @@ async function login(req, res, next) {
   }
 }
 
-async function refresh(req, res, next) {
-  try {
-    const { refreshToken } = req.body;
-    if (!refreshToken) return res.status(400).json({ error: 'refreshToken is required.' });
-    let payload;
-    try {
-      payload = verifyRefreshToken(refreshToken);
-    } catch (err) {
-      return res.status(401).json({ error: 'Invalid or expired refresh token.' });
-    }
-    const user = await User.findById(payload.sub);
-    if (!user || user.status !== 'active' || user.refreshTokenVersion !== payload.ver) {
-      return res.status(401).json({ error: 'Refresh token has been revoked.' });
-    }
-    res.json({ accessToken: generateAccessToken(user) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-async function logout(req, res, next) {
-  try {
-    await User.findByIdAndUpdate(req.user.id, { $inc: { refreshTokenVersion: 1 } });
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
+// No server-side session to revoke - the access token never expires and
+// there's no refresh token to invalidate. Logging out is just the client
+// discarding its stored token; this endpoint exists so that flow has a
+// clear place to hang off of.
+async function logout(_req, res) {
+  res.json({ ok: true });
 }
 
 async function me(req, res) {
   res.json({ id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role });
 }
 
-module.exports = { acceptInvite, login, refresh, logout, me, serializeUser };
+module.exports = { acceptInvite, login, logout, me, serializeUser };

@@ -27,7 +27,7 @@ describe('AuthContext', () => {
     server.use(
       http.post('http://localhost:4000/api/auth/login', () =>
         HttpResponse.json({
-          accessToken: 'acc', refreshToken: 'ref',
+          accessToken: 'acc',
           user: { id: '1', email: 'a@example.com', name: 'A', role: 'staff' },
         })
       )

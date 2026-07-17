@@ -10,7 +10,6 @@ const userSchema = new mongoose.Schema(
     inviteTokenHash: { type: String, default: null },
     inviteTokenExpiresAt: { type: Date, default: null },
     invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-    refreshTokenVersion: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

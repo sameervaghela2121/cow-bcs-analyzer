@@ -11,22 +11,10 @@ async function comparePassword(password, hash) {
   return bcrypt.compare(password, hash);
 }
 
+// No expiresIn: access tokens never expire, so there's no refresh flow to
+// keep them alive - login once and stay signed in.
 function generateAccessToken(user) {
-  return jwt.sign({ sub: user._id.toString(), role: user.role }, config.jwtAccessSecret, {
-    expiresIn: '15m',
-  });
-}
-
-function generateRefreshToken(user) {
-  return jwt.sign(
-    { sub: user._id.toString(), ver: user.refreshTokenVersion },
-    config.jwtRefreshSecret,
-    { expiresIn: '7d' }
-  );
-}
-
-function verifyRefreshToken(token) {
-  return jwt.verify(token, config.jwtRefreshSecret);
+  return jwt.sign({ sub: user._id.toString(), role: user.role }, config.jwtAccessSecret);
 }
 
 function generateInviteToken() {
@@ -43,8 +31,6 @@ module.exports = {
   hashPassword,
   comparePassword,
   generateAccessToken,
-  generateRefreshToken,
-  verifyRefreshToken,
   generateInviteToken,
   hashToken,
 };

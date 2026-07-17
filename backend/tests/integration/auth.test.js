@@ -103,7 +103,6 @@ describe('POST /api/auth/accept-invite', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBeTruthy();
-    expect(res.body.refreshToken).toBeTruthy();
     expect(res.body.user.status).toBe('active');
 
     const updated = await User.findOne({ email: 'pending@example.com' });
@@ -179,7 +178,7 @@ describe('POST /api/auth/login', () => {
   });
 });
 
-describe('POST /api/auth/refresh and /logout', () => {
+describe('POST /api/auth/logout', () => {
   let app;
   const { hashPassword } = require('../../src/services/authService');
   const User = require('../../src/models/User');
@@ -187,31 +186,24 @@ describe('POST /api/auth/refresh and /logout', () => {
   beforeAll(async () => { app = createApp(); });
   afterEach(async () => { await clearDatabase(); });
 
-  async function loginAndGetTokens() {
+  it('accepts a valid access token and confirms logout', async () => {
     await User.create({
-      email: 'refresh@example.com', name: 'Refresh', role: 'staff', status: 'active',
+      email: 'logout@example.com', name: 'Logout', role: 'staff', status: 'active',
       passwordHash: await hashPassword('correct-password'),
     });
-    const res = await request(app).post('/api/auth/login').send({
-      email: 'refresh@example.com', password: 'correct-password',
+    const login = await request(app).post('/api/auth/login').send({
+      email: 'logout@example.com', password: 'correct-password',
     });
-    return res.body;
-  }
-
-  it('issues a new access token from a valid refresh token', async () => {
-    const { refreshToken } = await loginAndGetTokens();
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    const res = await request(app)
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${login.body.accessToken}`);
     expect(res.status).toBe(200);
-    expect(res.body.accessToken).toBeTruthy();
+    expect(res.body.ok).toBe(true);
   });
 
-  it('invalidates the refresh token after logout', async () => {
-    const { accessToken, refreshToken } = await loginAndGetTokens();
-    const logoutRes = await request(app).post('/api/auth/logout').set('Authorization', `Bearer ${accessToken}`);
-    expect(logoutRes.status).toBe(200);
-
-    const refreshRes = await request(app).post('/api/auth/refresh').send({ refreshToken });
-    expect(refreshRes.status).toBe(401);
+  it('rejects logout with no access token', async () => {
+    const res = await request(app).post('/api/auth/logout');
+    expect(res.status).toBe(401);
   });
 });
 

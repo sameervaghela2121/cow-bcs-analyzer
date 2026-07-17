@@ -4,7 +4,6 @@ module.exports = {
   port: Number(process.env.PORT) || 4000,
   mongodbUrl: process.env.MONGODB_URL || 'mongodb://127.0.0.1:27017/bcs_tracker',
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET || 'dev-access-secret',
-  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   smtp: {
     host: process.env.SMTP_HOST || '',

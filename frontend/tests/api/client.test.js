@@ -9,7 +9,7 @@ afterAll(() => server.close());
 
 describe('apiClient', () => {
   it('attaches the stored access token as a Bearer header', async () => {
-    setTokens({ accessToken: 'abc123', refreshToken: 'refresh123' });
+    setTokens({ accessToken: 'abc123' });
     let receivedAuth;
     server.use(
       http.get('http://localhost:4000/api/_probe', ({ request }) => {
@@ -21,24 +21,12 @@ describe('apiClient', () => {
     expect(receivedAuth).toBe('Bearer abc123');
   });
 
-  it('refreshes the access token once on a 401 and retries the original request', async () => {
-    setTokens({ accessToken: 'expired', refreshToken: 'refresh123' });
-    let probeCalls = 0;
-    server.use(
-      http.get('http://localhost:4000/api/_probe', ({ request }) => {
-        probeCalls += 1;
-        if (request.headers.get('authorization') === 'Bearer expired') {
-          return new HttpResponse(null, { status: 401 });
-        }
-        return HttpResponse.json({ ok: true });
-      }),
-      http.post('http://localhost:4000/api/auth/refresh', () =>
-        HttpResponse.json({ accessToken: 'fresh-token' })
-      )
-    );
-    const res = await apiClient.get('/_probe');
-    expect(res.data).toEqual({ ok: true });
-    expect(probeCalls).toBe(2);
-    expect(getAccessToken()).toBe('fresh-token');
+  // Access tokens never expire and there's no refresh flow, so a 401 means
+  // the token is genuinely invalid/revoked - clear it instead of retrying.
+  it('clears the stored token on a 401 instead of retrying', async () => {
+    setTokens({ accessToken: 'revoked' });
+    server.use(http.get('http://localhost:4000/api/_probe', () => new HttpResponse(null, { status: 401 })));
+    await expect(apiClient.get('/_probe')).rejects.toBeTruthy();
+    expect(getAccessToken()).toBeNull();
   });
 });

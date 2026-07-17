@@ -32,7 +32,7 @@ describe('AcceptInvitePage', () => {
       http.post('http://localhost:4000/api/auth/accept-invite', async ({ request }) => {
         sentBody = await request.json();
         return HttpResponse.json({
-          accessToken: 'acc', refreshToken: 'ref',
+          accessToken: 'acc',
           user: { id: '1', email: 'invitee@example.com', name: 'Invitee', role: 'staff' },
         });
       })
