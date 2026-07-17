@@ -43,14 +43,7 @@ jobs:
           service: bcs-backend
           region: ${{ env.REGION }}
           image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
-          # min-instances=1: keeps one instance's MongoDB connection pool
-          # permanently warm. At min-instances=0 the container (and its
-          # connection pool) gets torn down between bursts of traffic, so
-          # the first query on a fresh instance pays a ~1s "cold connect"
-          # tax (SRV DNS + TLS handshake to the Atlas cluster) that a warm
-          # pool never pays - measured directly against the cluster: ~400ms
-          # connect + ~190ms first-query overhead, vs ~20ms once warm.
-          flags: --allow-unauthenticated --port=8080 --memory=512Mi --min-instances=1 --max-instances=3 --service-account=bcs-backend-uploader@sameerv.iam.gserviceaccount.com
+          flags: --allow-unauthenticated --port=8080 --memory=512Mi --min-instances=0 --max-instances=3 --service-account=bcs-backend-uploader@sameerv.iam.gserviceaccount.com
           env_vars: |
             SMTP_HOST=email-smtp.ap-south-1.amazonaws.com
             SMTP_PORT=587
