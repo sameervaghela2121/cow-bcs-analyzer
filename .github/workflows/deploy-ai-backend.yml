@@ -38,8 +38,7 @@ jobs:
           service: bcs-ai-backend
           region: ${{ env.REGION }}
           image: ${{ env.REGISTRY }}/ai-backend:${{ github.sha }}
-          service_account: bcs-ai-backend-reader@sameerv.iam.gserviceaccount.com
-          flags: --allow-unauthenticated --port=8080 --memory=1Gi --cpu=1 --min-instances=0 --max-instances=3 --timeout=300
+          flags: --allow-unauthenticated --port=8080 --memory=1Gi --cpu=1 --min-instances=0 --max-instances=3 --timeout=300 --service-account=bcs-ai-backend-reader@sameerv.iam.gserviceaccount.com
           env_vars: |
             ENV=production
             DEBUG=false

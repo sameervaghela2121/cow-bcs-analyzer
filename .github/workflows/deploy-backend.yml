@@ -43,8 +43,7 @@ jobs:
           service: bcs-backend
           region: ${{ env.REGION }}
           image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
-          service_account: bcs-backend-uploader@sameerv.iam.gserviceaccount.com
-          flags: --allow-unauthenticated --port=8080 --memory=512Mi --min-instances=0 --max-instances=3
+          flags: --allow-unauthenticated --port=8080 --memory=512Mi --min-instances=0 --max-instances=3 --service-account=bcs-backend-uploader@sameerv.iam.gserviceaccount.com
           env_vars: |
             SMTP_HOST=email-smtp.ap-south-1.amazonaws.com
             SMTP_PORT=587
