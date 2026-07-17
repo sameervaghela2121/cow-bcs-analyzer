@@ -17,7 +17,7 @@ export function ToastProvider({ children }) {
     }
   }, []);
 
-  const showToast = useCallback((message, { type = 'success', duration = 4000 } = {}) => {
+  const showToast = useCallback((message, { type = 'success', duration = 3000 } = {}) => {
     const id = ++nextId;
     setToasts((prev) => [...prev, { id, message, type }]);
     timers.current.set(id, setTimeout(() => dismiss(id), duration));
@@ -26,7 +26,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div style={{ position: 'fixed', bottom: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 10, zIndex: 1000 }}>
+      <div style={{ position: 'fixed', top: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 10, zIndex: 1000 }}>
         {toasts.map((t) => (
           <div
             key={t.id}
