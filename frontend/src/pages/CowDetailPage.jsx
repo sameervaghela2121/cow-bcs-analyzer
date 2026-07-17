@@ -29,11 +29,11 @@ function AnalysisImages({ imageUrls }) {
   );
 }
 
-// bcsScore.mean_bcs_score is the average of final_bcs across whichever
-// providers succeeded (computed server-side in ai-backend) - shown as the
-// single overall score rather than breaking it out per-provider.
-function MeanScore({ bcsScore }) {
-  const score = bcsScore?.mean_bcs_score;
+// mean_bcs_score is a root-level field on the analysis (a sibling of
+// bcsScore, not nested inside it) - the average of final_bcs across
+// whichever providers succeeded (computed server-side in ai-backend) -
+// shown as the single overall score rather than breaking it out per-provider.
+function MeanScore({ score }) {
   if (score == null) return null;
   const band = bandFor(score);
   return (
@@ -62,7 +62,7 @@ function AnalysisRow({ analysis: initial }) {
           {analysis.status === 'failed' && analysis.errorMessage ? `: ${analysis.errorMessage}` : ''}
         </div>
       </div>
-      {analysis.status === 'completed' && <MeanScore bcsScore={analysis.bcsScore} />}
+      {analysis.status === 'completed' && <MeanScore score={analysis.mean_bcs_score} />}
     </div>
   );
 }

@@ -69,6 +69,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(res.status).toBe(201);
     expect(res.body.bcsAnalysis.status).toBe('not_started');
     expect(res.body.bcsAnalysis.bcsScore).toEqual({});
+    // root-level, sibling of bcsScore - not nested inside it
+    expect(res.body.bcsAnalysis.mean_bcs_score).toBe(null);
     expect(res.body.bcsAnalysis.createdBy).toBe(user._id.toString());
     expect(res.body.bcsAnalysis.is_approved).toBe(false);
 
@@ -162,8 +164,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
+        mean_bcs_score: 3.25,
         bcsScore: {
-          mean_bcs_score: 3.25,
           median_bcs_score: { score: 3.25, is_selected: false },
           gemini: { final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false },
         },
@@ -193,7 +195,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
-        bcsScore: { mean_bcs_score: 3.25 },
+        mean_bcs_score: 3.25,
         createdBy: user._id, // the uploader
         updatedBy: user._id,
       });
@@ -253,8 +255,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
+        mean_bcs_score: 3.25,
         bcsScore: {
-          mean_bcs_score: 3.25,
           median_bcs_score: { score: 3.25, is_selected: false },
           gemini: { final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false },
         },
@@ -269,8 +271,9 @@ describe('bcs-analysis upload + create + poll flow', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.bcsAnalysis.bcsScore.median_bcs_score).toEqual({ score: 3.5, is_selected: true });
-      // mean_bcs_score is the AI's own computed average - a human override doesn't touch it
-      expect(res.body.bcsAnalysis.bcsScore.mean_bcs_score).toBe(3.25);
+      // mean_bcs_score is the AI's own computed average, kept at the root of
+      // the document - a human override doesn't touch it
+      expect(res.body.bcsAnalysis.mean_bcs_score).toBe(3.25);
       expect(res.body.bcsAnalysis.bcsScore.gemini).toEqual({ final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false });
       // overriding is itself a review decision - counts as approved too
       expect(res.body.bcsAnalysis.is_approved).toBe(true);
@@ -287,7 +290,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
-        bcsScore: { mean_bcs_score: 3.25 },
+        mean_bcs_score: 3.25,
         createdBy: user._id, // the uploader
         updatedBy: user._id,
       });
@@ -318,7 +321,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
-        bcsScore: { mean_bcs_score: 3.25, median_bcs_score: { score: 3.25, is_selected: false } },
+        mean_bcs_score: 3.25,
+        bcsScore: { median_bcs_score: { score: 3.25, is_selected: false } },
         createdBy: user._id,
         updatedBy: user._id,
       });
@@ -339,7 +343,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
-        bcsScore: { mean_bcs_score: 3.25 },
+        mean_bcs_score: 3.25,
         createdBy: user._id,
         updatedBy: user._id,
       });
@@ -398,7 +402,6 @@ describe('bcs-analysis upload + create + poll flow', () => {
 
     it("selects a specific provider's score, deselecting the median and every other provider", async () => {
       const analysis = await makeCompletedAnalysis({
-        mean_bcs_score: 3.25,
         median_bcs_score: { score: 3.25, is_selected: true }, // e.g. already approved once
         gemini: { final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false },
         claude: { final_bcs: 3.5, confidence: 'Medium', status: 'success', is_selected: false },

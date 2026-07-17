@@ -71,6 +71,7 @@ async function serializeBcsAnalysis(doc) {
     cowsImages: doc.cowsImages,
     imageUrls,
     bcsScore: doc.bcsScore,
+    mean_bcs_score: doc.mean_bcs_score,
     status: doc.status,
     errorMessage: doc.errorMessage,
     is_approved: doc.is_approved,
