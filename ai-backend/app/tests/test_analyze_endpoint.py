@@ -10,6 +10,7 @@ import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
 
+from app.core.exceptions import InvalidImageError
 from app.main import app
 from app.schemas.bcs import MultiModelBCSResponse, ProviderAssessment
 from app.services.llm.base import ImagePayload
@@ -70,6 +71,77 @@ def test_analyze_marks_processing_then_completed_on_success():
     assert calls[1].args[0] == analysis_id
     assert calls[1].args[1]["status"] == "completed"
     assert calls[1].args[1]["bcsScore"] == fake_result.model_dump()
+
+
+def test_analyze_skips_a_failed_image_but_still_completes_with_the_rest():
+    """One image being too big / broken must not take down the whole
+    analysis - it should be dropped, and the record still completes using
+    whichever images did download successfully."""
+    analysis_id = ObjectId()
+    record = {
+        "_id": analysis_id,
+        "status": "not_started",
+        "cowsImages": [
+            "gs://bucket/3124/ts/a.jpg",
+            "gs://bucket/3124/ts/too-big.jpg",
+            "gs://bucket/3124/ts/c.jpg",
+        ],
+    }
+    fake_payload = ImagePayload(bytes_data=b"x", mime_type="image/jpeg")
+    fake_result = MultiModelBCSResponse(
+        gemini=ProviderAssessment(final_bcs=3.0, confidence="High", status="success")
+    )
+
+    async def fetch_side_effect(uri):
+        if "too-big" in uri:
+            raise InvalidImageError(f"'{uri}' is 12.0MB, exceeds 10MB limit.")
+        return fake_payload
+
+    with (
+        patch("app.api.endpoints.bcs.get_bcs_analysis", new=AsyncMock(return_value=record)),
+        patch("app.api.endpoints.bcs.update_bcs_analysis", new=AsyncMock()) as mock_update,
+        patch("app.api.endpoints.bcs.fetch_image_from_gcs", new=AsyncMock(side_effect=fetch_side_effect)),
+        patch("app.api.endpoints.bcs.assess_bcs", new=AsyncMock(return_value=fake_result)) as mock_assess,
+    ):
+        response = client.post(f"/api/bcs/analyze/{analysis_id}")
+
+    assert response.status_code == 202
+
+    # only the 2 good images should have reached assess_bcs - the broken one is dropped
+    mock_assess.assert_awaited_once()
+    assert len(mock_assess.await_args.kwargs["images"]) == 2
+
+    calls = mock_update.await_args_list
+    assert calls[1].args[0] == analysis_id
+    assert calls[1].args[1]["status"] == "completed"
+    assert calls[1].args[1]["bcsScore"] == fake_result.model_dump()
+    assert len(calls[1].args[1]["skippedImages"]) == 1
+    assert "too-big" in calls[1].args[1]["skippedImages"][0]
+
+
+def test_analyze_fails_only_when_every_single_image_fails():
+    """Skipping bad images is fine as long as at least one is usable - but
+    if literally all of them fail, the analysis has nothing to work with
+    and must be marked failed, not silently "completed" with no score."""
+    analysis_id = ObjectId()
+    record = {
+        "_id": analysis_id,
+        "status": "not_started",
+        "cowsImages": ["gs://bucket/3124/ts/a.jpg", "gs://bucket/3124/ts/b.jpg"],
+    }
+
+    with (
+        patch("app.api.endpoints.bcs.get_bcs_analysis", new=AsyncMock(return_value=record)),
+        patch("app.api.endpoints.bcs.update_bcs_analysis", new=AsyncMock()) as mock_update,
+        patch("app.api.endpoints.bcs.fetch_image_from_gcs", new=AsyncMock(side_effect=RuntimeError("gone"))),
+    ):
+        response = client.post(f"/api/bcs/analyze/{analysis_id}")
+
+    assert response.status_code == 202
+
+    calls = mock_update.await_args_list
+    assert calls[1].args[1]["status"] == "failed"
+    assert "All 2 image(s) failed to download" in calls[1].args[1]["errorMessage"]
 
 
 def test_analyze_marks_failed_when_assessment_raises():
