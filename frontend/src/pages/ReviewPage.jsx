@@ -60,6 +60,10 @@ function ReviewRow({ cow }) {
   const [editing, setEditing] = useState(false);
   const [tempScore, setTempScore] = useState(0);
   const [overriddenScore, setOverriddenScore] = useState(null);
+  // Checking a provider's box doesn't save immediately - it just stages a
+  // choice ("Select Gemini's score (3.5) as final?") that still needs an
+  // explicit Confirm, same idea as the Override stepper below.
+  const [pendingProvider, setPendingProvider] = useState(null);
   // Captured at the moment Override is opened - medianScore itself becomes
   // the *new* value once the mutation's invalidation refetch lands, so
   // reading it live afterward for "Overridden from X" would show the new
@@ -92,6 +96,7 @@ function ReviewRow({ cow }) {
       showToast('Selection saved successfully.');
     },
     onError: () => showToast('Failed to save selection - please try again.', { type: 'error' }),
+    onSettled: () => setPendingProvider(null),
   });
 
   const overrideMutation = useMutation({
@@ -125,6 +130,10 @@ function ReviewRow({ cow }) {
     setOverriddenScore(tempScore);
     setEditing(false);
     overrideMutation.mutate(tempScore);
+  }
+
+  function confirmSelect() {
+    selectMutation.mutate(pendingProvider);
   }
 
   return (
@@ -165,9 +174,9 @@ function ReviewRow({ cow }) {
               key={p.key}
               label={p.label}
               assessment={latest.bcsScore?.[p.key]}
-              selected={selectedProvider === p.key}
-              disabled={anyActionPending}
-              onSelect={() => selectMutation.mutate(p.key)}
+              selected={selectedProvider === p.key || pendingProvider === p.key}
+              disabled={anyActionPending || editing || pendingProvider != null}
+              onSelect={() => setPendingProvider(p.key)}
             />
           ))}
         </div>
@@ -180,6 +189,27 @@ function ReviewRow({ cow }) {
           <button onClick={() => setTempScore((s) => Math.min(5, roundQuarter(s + 0.25)))} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #d8d2c2', cursor: 'pointer' }}>+</button>
           <button onClick={confirmOverride} style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer' }}>Confirm</button>
           <button onClick={() => setEditing(false)} style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}>Cancel</button>
+        </div>
+      ) : pendingProvider ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12.5, color: '#3a3324' }}>
+            Select {PROVIDERS.find((p) => p.key === pendingProvider).label}&apos;s score (
+            {formatScore(latest.bcsScore?.[pendingProvider]?.final_bcs)}) as final?
+          </span>
+          <button
+            onClick={confirmSelect}
+            disabled={selectMutation.isPending}
+            style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer' }}
+          >
+            {selectMutation.isPending ? 'Saving…' : 'Confirm'}
+          </button>
+          <button
+            onClick={() => setPendingProvider(null)}
+            disabled={selectMutation.isPending}
+            style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}
+          >
+            Cancel
+          </button>
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

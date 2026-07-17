@@ -186,7 +186,7 @@ describe('ReviewPage', () => {
     expect(screen.getByText(/OpenAI: No score/).closest('label').querySelector('input')).toBeDisabled();
   });
 
-  it("checking a provider's checkbox calls PATCH /select, shows a toast, updates the badge, and removes the row", async () => {
+  it("checking a provider's checkbox stages a confirmation instead of saving immediately", async () => {
     let selectBody;
     mockCowsAndAnalyses({
       cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
@@ -202,6 +202,56 @@ describe('ReviewPage', () => {
     await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
 
     await userEvent.click(screen.getByText(/Gemini: 3.5/));
+
+    // nothing saved yet - just a staged confirmation prompt
+    expect(screen.getByText(/select gemini's score \(3.5\) as final/i)).toBeInTheDocument();
+    expect(selectBody).toBeUndefined();
+    expect(screen.getByText('Cow 4417')).toBeInTheDocument();
+  });
+
+  it('canceling a staged provider selection discards it without calling /select', async () => {
+    let selectBody;
+    mockCowsAndAnalyses({
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
+      analysesByCow: {
+        4417: [{
+          id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
+          bcsScore: bcsScore(), imageUrls: [], is_approved: false,
+        }],
+      },
+      onSelect: (body) => { selectBody = body; },
+    });
+    renderReview();
+    await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText(/Gemini: 3.5/));
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    expect(screen.queryByText(/as final/i)).not.toBeInTheDocument();
+    expect(selectBody).toBeUndefined();
+    // back to the normal Approve/Override controls, median score untouched
+    expect(screen.getByRole('button', { name: /^approve$/i })).toBeInTheDocument();
+    expect(screen.getByText('3.25')).toBeInTheDocument();
+  });
+
+  it("confirming a staged provider selection calls PATCH /select, shows a toast, updates the badge, and removes the row", async () => {
+    let selectBody;
+    mockCowsAndAnalyses({
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
+      analysesByCow: {
+        4417: [{
+          id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
+          bcsScore: bcsScore(), imageUrls: [], is_approved: false,
+        }],
+      },
+      onSelect: (body) => { selectBody = body; },
+    });
+    renderReview();
+    await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText(/Gemini: 3.5/));
+    await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
+
     await waitFor(() => expect(selectBody).toEqual({ provider: 'gemini' }));
     await waitFor(() => expect(screen.getByText(/selection saved successfully/i)).toBeInTheDocument());
 
@@ -210,7 +260,7 @@ describe('ReviewPage', () => {
     await waitFor(() => expect(screen.queryByText('Cow 4417')).not.toBeInTheDocument());
   });
 
-  it('shows an error toast when selecting a provider fails, and leaves the row in place', async () => {
+  it('shows an error toast when confirming a selection fails, and leaves the row in place', async () => {
     mockCowsAndAnalyses({
       cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
       analysesByCow: {
@@ -227,6 +277,7 @@ describe('ReviewPage', () => {
     await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
 
     await userEvent.click(screen.getByText(/Claude: 3.25/));
+    await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
 
     await waitFor(() => expect(screen.getByText(/failed to save selection/i)).toBeInTheDocument());
     expect(screen.getByText('Cow 4417')).toBeInTheDocument();
