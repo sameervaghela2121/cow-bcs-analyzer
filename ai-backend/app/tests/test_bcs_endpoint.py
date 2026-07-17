@@ -156,3 +156,42 @@ async def test_assess_bcs_mean_divides_by_all_three_when_all_three_succeed():
 
     # (3.0 + 3.25 + 3.75) / 3 = 3.3333... -> rounded to the nearest 0.25 = 3.25
     assert body["mean_bcs_score"] == 3.25
+
+
+@pytest.mark.asyncio
+async def test_assess_bcs_skips_one_invalid_image_but_still_scores_the_rest():
+    """A single image failing validation (e.g. over the size limit) must
+    not block the whole request - it's dropped, and the still-valid images
+    go on to be scored normally."""
+    good_bytes = b"fake-image-bytes"
+    too_big_bytes = b"x" * (2 * 1024 * 1024)  # 2MB - exceeds the 1MB test cap below
+    files = [
+        ("images", ("good1.jpg", good_bytes, "image/jpeg")),
+        ("images", ("too-big.jpg", too_big_bytes, "image/jpeg")),
+        ("images", ("good2.jpg", good_bytes, "image/jpeg")),
+    ]
+
+    with (
+        patch("app.utils.image_utils.settings.MAX_IMAGE_SIZE_MB", 1),
+        patch(
+            "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
+            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+        ) as gemini_mock,
+    ):
+        response = client.post("/api/bcs/assess?providers=gemini", files=files)
+
+    assert response.status_code == 200
+    assert response.json()["gemini"]["status"] == "success"
+    # only the 2 valid images should have reached the provider
+    assert len(gemini_mock.call_args.kwargs["images"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_assess_bcs_422s_when_every_image_fails_validation():
+    too_big_bytes = b"x" * (2 * 1024 * 1024)
+    files = [("images", ("too-big.jpg", too_big_bytes, "image/jpeg"))]
+
+    with patch("app.utils.image_utils.settings.MAX_IMAGE_SIZE_MB", 1):
+        response = client.post("/api/bcs/assess", files=files)
+
+    assert response.status_code == 422
