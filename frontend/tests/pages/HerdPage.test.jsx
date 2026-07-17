@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -72,6 +72,38 @@ describe('HerdPage', () => {
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
     await user.click(screen.getByText('Cow 4417'));
     expect(await screen.findByText(/cow detail page/i)).toBeInTheDocument();
+  });
+
+  it('polls every 10s while any cow is still processing, and stops once all have settled', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let calls = 0;
+    server.use(
+      http.get('http://localhost:4000/api/cows', () => {
+        calls += 1;
+        const settled = calls >= 3;
+        return HttpResponse.json({
+          cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: settled ? 'completed' : 'processing' }],
+          total: 1,
+        });
+      })
+    );
+
+    renderHerd();
+    await waitFor(() => expect(screen.getByText(/processing|completed/i)).toBeInTheDocument());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25000);
+    });
+    await waitFor(() => expect(screen.getByText(/^completed$/i)).toBeInTheDocument());
+    expect(calls).toBeGreaterThanOrEqual(3);
+    const callsAtCompletion = calls;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+    expect(calls).toBe(callsAtCompletion);
+
+    vi.useRealTimers();
   });
 
   it('re-fetches with the search term as a query param', async () => {

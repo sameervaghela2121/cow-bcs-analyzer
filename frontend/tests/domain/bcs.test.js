@@ -1,4 +1,4 @@
-import { bandFor, confidenceStyleFor, formatScore, THEMES } from '../../src/domain/bcs.js';
+import { bandFor, confidenceStyleFor, formatScore, THEME } from '../../src/domain/bcs.js';
 
 describe('bandFor', () => {
   it('classifies thin/ideal/heavy at the exact boundaries', () => {
@@ -35,9 +35,8 @@ describe('formatScore', () => {
   });
 });
 
-describe('THEMES', () => {
-  it('has light and dark palettes with the core css vars', () => {
-    expect(THEMES.light['--bg-page']).toBe('#f6f5f0');
-    expect(THEMES.dark['--bg-page']).toBe('#14170f');
+describe('THEME', () => {
+  it('has the core css vars for the (only) light palette', () => {
+    expect(THEME['--bg-page']).toBe('#f6f5f0');
   });
 });

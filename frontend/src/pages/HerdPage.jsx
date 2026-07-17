@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { cowsApi } from '../api/cows.js';
 import StatusPill from '../components/StatusPill.jsx';
+import { PENDING_STATUSES } from '../domain/analysisStatus.js';
 
 export default function HerdPage() {
   const navigate = useNavigate();
@@ -11,6 +12,11 @@ export default function HerdPage() {
   const { data } = useQuery({
     queryKey: ['cows', { search }],
     queryFn: () => cowsApi.list({ search: search || undefined }),
+    // Keep the grid's status pills current while anything is still
+    // processing, same 10s cadence as the cow detail page; stop polling
+    // once every cow's latest analysis has settled.
+    refetchInterval: (query) =>
+      (query.state.data?.cows || []).some((cow) => PENDING_STATUSES.has(cow.latestAnalysisStatus)) ? 10000 : false,
   });
 
   const cows = data?.cows || [];

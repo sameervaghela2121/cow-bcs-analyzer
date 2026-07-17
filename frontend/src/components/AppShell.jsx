@@ -1,9 +1,8 @@
-import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 // import { useQuery } from '@tanstack/react-query';
-import { Moon, Sun } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { THEMES } from '../domain/bcs.js';
+import { THEME } from '../domain/bcs.js';
 // import { reviewApi } from '../api/review.js';
 import './AppShell.css';
 
@@ -12,9 +11,8 @@ const navActive = { ...navBase, background: '#33443a' };
 
 export default function AppShell() {
   const { user, logout } = useAuth();
-  const [theme, setTheme] = useState('light');
   const isAdmin = user?.role === 'admin';
-  const rootStyle = { ...THEMES[theme], display: 'flex', height: '100%', width: '100%', background: 'var(--bg-page)', color: 'var(--text-primary)' };
+  const rootStyle = { ...THEME, display: 'flex', height: '100%', width: '100%', background: 'var(--bg-page)', color: 'var(--text-primary)' };
   // Temporarily disabled: /api/review/queue no longer exists on the backend
   // (review workflow removed in the schema overhaul). This was firing a 404
   // on every page since AppShell wraps every route. Re-enable once the
@@ -38,22 +36,28 @@ export default function AppShell() {
         </NavLink>
         <NavLink to="/audit" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Audit Log</NavLink>
         {isAdmin && (
-          <NavLink to="/users" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>User Management</NavLink>
+          <NavLink to="/users" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>User</NavLink>
         )}
         <div className="bcs-sidebar-user" style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '10px', borderRadius: 8, background: '#26362b' }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#33443a', color: '#eee8d8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
             {(user?.name || user?.email || '?').trim().charAt(0).toUpperCase()}
           </div>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: '#eee8d8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email}</div>
             <div style={{ fontSize: 10.5, color: '#9a9280', textTransform: 'capitalize' }}>{user?.role}</div>
           </div>
+          <button
+            onClick={logout}
+            title="Log out"
+            aria-label="Log out"
+            style={{
+              flexShrink: 0, width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent',
+              color: '#c9c2ae', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <LogOut size={15} />
+          </button>
         </div>
-        <div className="bcs-sidebar-footer" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#c9c2ae', padding: '7px 8px', borderRadius: 6, background: '#26362b' }}>
-          <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
-          {theme === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
-        </div>
-        <div className="bcs-sidebar-footer" onClick={logout} style={{ cursor: 'pointer', fontSize: '11.5px', color: '#c9c2ae', marginTop: 10 }}>Log out</div>
       </div>
       <div className="bcs-main" style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
         <Outlet />
