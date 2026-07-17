@@ -90,4 +90,18 @@ async def assess_bcs(
         errors = [f"{name}: {a.error_message}" for name, a in outcomes]
         raise LLMProviderError(f"All providers failed: {errors}")
 
+    # Mean of final_bcs across whichever providers actually succeeded -
+    # divided by that count (1, 2, or 3), never a fixed denominator. Computed
+    # from `outcomes` (only the providers that were queried this call), not
+    # from `response` directly - untouched provider fields on `response`
+    # still carry ProviderAssessment's default status="success" even though
+    # they were never queried, which would otherwise silently pollute this.
+    successful_scores = [
+        assessment.final_bcs
+        for _, assessment in outcomes
+        if assessment.status == "success" and assessment.final_bcs is not None
+    ]
+    if successful_scores:
+        response.mean_bcs_score = round(sum(successful_scores) / len(successful_scores) * 4) / 4
+
     return response

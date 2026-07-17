@@ -31,3 +31,13 @@ class MultiModelBCSResponse(BaseModel):
     claude: ProviderAssessment = Field(default_factory=ProviderAssessment)
     gemini: ProviderAssessment = Field(default_factory=ProviderAssessment)
     openai: ProviderAssessment = Field(default_factory=ProviderAssessment)
+    mean_bcs_score: float | None = Field(
+        default=None,
+        ge=1.0,
+        le=5.0,
+        description=(
+            "Average of final_bcs across only the providers that actually "
+            "succeeded - divided by however many that was (1, 2, or 3), not "
+            "a fixed count."
+        ),
+    )

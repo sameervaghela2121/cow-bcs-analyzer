@@ -1,3 +1,6 @@
+import asyncio
+from typing import Awaitable
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
@@ -9,10 +12,34 @@ from app.db.mongo import get_bcs_analysis, update_bcs_analysis
 from app.schemas.bcs import MultiModelBCSResponse
 from app.services.bcs_service import assess_bcs
 from app.services.gcs_service import fetch_image_from_gcs
+from app.services.llm.base import ImagePayload
 from app.utils.image_utils import validate_and_load_image
 
 router = APIRouter(prefix="/bcs", tags=["Body Condition Scoring"])
 logger = get_logger(__name__)
+
+
+async def _gather_images_tolerating_failures(
+    labels: list[str],
+    fetch_calls: list[Awaitable[ImagePayload]],
+) -> tuple[list[ImagePayload], list[str]]:
+    """
+    Runs every per-image fetch/validation concurrently. One image failing
+    (size limit, bad content-type, a broken GCS object, etc.) must never
+    abort the whole analysis - it's skipped, logged, and reported back
+    alongside whatever did succeed, exactly like a single LLM provider
+    failing never blocks the others in assess_bcs().
+    """
+    results = await asyncio.gather(*fetch_calls, return_exceptions=True)
+    payloads: list[ImagePayload] = []
+    failures: list[str] = []
+    for label, result in zip(labels, results):
+        if isinstance(result, Exception):
+            logger.warning("Skipping image '%s': %s", label, result)
+            failures.append(f"{label}: {result}")
+        else:
+            payloads.append(result)
+    return payloads, failures
 
 
 @router.post("/assess", response_model=MultiModelBCSResponse)
@@ -27,7 +54,9 @@ async def assess_cattle_bcs(
 
     Returns each model's structured assessment side by side under `results`,
     plus any providers that failed under `errors` (one failure never blocks
-    the others).
+    the others). Likewise, one image failing validation (size limit, wrong
+    type, etc.) never blocks the rest - it's skipped and the analysis still
+    runs on whichever images were valid.
 
     Kept as a standalone multipart entry point independent of MongoDB state —
     useful for smoke-testing provider wiring. The `/analyze/{id}` route below
@@ -36,10 +65,12 @@ async def assess_cattle_bcs(
     if not images:
         raise InvalidImageError("At least one image is required.")
 
-    payloads = [
-        await validate_and_load_image(file)
-        for file in images
-    ]
+    payloads, failures = await _gather_images_tolerating_failures(
+        labels=[file.filename or "unnamed" for file in images],
+        fetch_calls=[validate_and_load_image(file) for file in images],
+    )
+    if not payloads:
+        raise InvalidImageError(f"All {len(images)} image(s) failed validation: {failures}")
 
     return await assess_bcs(images=payloads, provider_names=provider_names)
 
@@ -65,11 +96,26 @@ async def _run_analysis(analysis_id: ObjectId, image_uris: list[str]) -> None:
     multipart upload) and run the exact same assess_bcs() used by /assess —
     same prompt, same providers, same reconciliation. Only the image
     acquisition step differs from the multipart flow.
+
+    One image failing to download (size limit, wrong content-type, a
+    permissions/network hiccup on that one GCS object, etc.) does not fail
+    the whole analysis - it's skipped, and the record still completes using
+    whichever images did download. Only if every single image fails does
+    the analysis itself fail.
     """
     try:
-        payloads = [await fetch_image_from_gcs(uri) for uri in image_uris]
+        payloads, failures = await _gather_images_tolerating_failures(
+            labels=image_uris,
+            fetch_calls=[fetch_image_from_gcs(uri) for uri in image_uris],
+        )
+        if not payloads:
+            raise InvalidImageError(f"All {len(image_uris)} image(s) failed to download: {failures}")
+
         result = await assess_bcs(images=payloads)
-        await update_bcs_analysis(analysis_id, {"status": "completed", "bcsScore": result.model_dump()})
+        update_fields = {"status": "completed", "bcsScore": result.model_dump()}
+        if failures:
+            update_fields["skippedImages"] = failures
+        await update_bcs_analysis(analysis_id, update_fields)
     except Exception as exc:  # noqa: BLE001
         logger.warning("BCS analysis %s failed: %s", analysis_id, exc)
         await update_bcs_analysis(analysis_id, {"status": "failed", "errorMessage": str(exc)})
