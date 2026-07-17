@@ -135,6 +135,63 @@ describe('CowDetailPage', () => {
     vi.useRealTimers();
   });
 
+  it('shows one cover photo with a "+N" badge, and opens a full-screen gallery on click', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/cows/4417', () => HttpResponse.json({ cow: { id: 'c1', cowsId: '4417' } })),
+      http.get('http://localhost:4000/api/cows/4417/analyses', () =>
+        HttpResponse.json({
+          bcsAnalyses: [
+            {
+              id: 'a1',
+              status: 'completed',
+              createdAt: '2026-07-10T00:00:00Z',
+              imageUrls: [
+                'https://storage.googleapis.com/img1.jpg',
+                'https://storage.googleapis.com/img2.jpg',
+                'https://storage.googleapis.com/img3.jpg',
+              ],
+              bcsScore: { mean_bcs_score: 3.25 },
+            },
+          ],
+          total: 1,
+        })
+      )
+    );
+    const { container } = renderDetail();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+
+    // Only the first photo shows as a thumbnail, with a badge for the other
+    // two. alt="" images are decorative, so they carry an implicit
+    // "presentation" role rather than "img" - querying raw <img> tags
+    // instead of screen.getAllByRole('img').
+    expect(container.querySelectorAll('img')).toHaveLength(1);
+    expect(screen.getByText('+2')).toBeInTheDocument();
+    expect(screen.queryByText('1 / 3')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'View 3 photos' }));
+
+    expect(screen.getByText('1 / 3')).toBeInTheDocument();
+    // Two <img> elements now exist (the thumbnail plus the lightbox's own) -
+    // the lightbox's is the last one rendered.
+    expect(container.querySelectorAll('img')).toHaveLength(2);
+    expect([...container.querySelectorAll('img')].at(-1)).toHaveAttribute('src', 'https://storage.googleapis.com/img1.jpg');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next image' }));
+    expect(screen.getByText('2 / 3')).toBeInTheDocument();
+    expect([...container.querySelectorAll('img')].at(-1)).toHaveAttribute('src', 'https://storage.googleapis.com/img2.jpg');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous image' }));
+    expect(screen.getByText('1 / 3')).toBeInTheDocument();
+
+    // Wraps around backward from the first photo to the last.
+    await userEvent.click(screen.getByRole('button', { name: 'Previous image' }));
+    expect(screen.getByText('3 / 3')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByText('1 / 3')).not.toBeInTheDocument();
+    expect(screen.queryByText('3 / 3')).not.toBeInTheDocument();
+  });
+
   it('back goes to wherever the user actually came from, not always /herd', async () => {
     server.use(
       http.get('http://localhost:4000/api/cows/4417', () => HttpResponse.json({ cow: { id: 'c1', cowsId: '4417' } })),
