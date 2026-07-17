@@ -13,11 +13,11 @@ function roundQuarter(n) {
   return Math.round(n * 4) / 4;
 }
 
-// Backend has no override-persistence endpoint yet - Override is still a
-// local-only adjustment: it changes what this row displays, but nothing is
-// saved. Approve, though, is real - PATCH /bcs-analysis/:id/approve sets
-// is_approved on the record itself, which is what drives this row's
-// "Approved as-is" state (not local component state).
+// Approve (PATCH .../approve, sets is_approved) and Override (PATCH
+// .../override, overwrites bcsScore.mean_bcs_score in place - the
+// per-provider claude/gemini/openai breakdown is left untouched) both
+// persist to the record itself, which is what drives this row's state -
+// not local component state - after either mutation settles.
 function ReviewRow({ cow }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -33,20 +33,38 @@ function ReviewRow({ cow }) {
 
   const [editing, setEditing] = useState(false);
   const [tempScore, setTempScore] = useState(0);
+  // Overriding replaces mean_bcs_score in Mongo directly - there's no
+  // separate "original mean" kept anywhere once that happens, so this local
+  // value (and the "Overridden from X" line) only lasts for this session;
+  // after a reload the new value just is the mean, same as any other.
   const [overriddenScore, setOverriddenScore] = useState(null);
+  // Captured at the moment Override is opened - meanScore itself becomes the
+  // *new* value once the mutation's invalidation refetch lands, so reading
+  // it live afterward for "Overridden from X" would show the new value
+  // twice instead of the value being replaced.
+  const [preOverrideScore, setPreOverrideScore] = useState(null);
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ['cow-analyses', cow.cowsId] });
+  }
 
   const approveMutation = useMutation({
     mutationFn: () => bcsAnalysisApi.approve(latest.id),
     onSuccess: () => {
       setOverriddenScore(null);
-      queryClient.invalidateQueries({ queryKey: ['cow-analyses', cow.cowsId] });
+      invalidate();
     },
   });
 
+  const overrideMutation = useMutation({
+    mutationFn: (score) => bcsAnalysisApi.override(latest.id, score),
+    onSuccess: invalidate,
+  });
+
   if (!latest) return null;
-  // Overriding is a newer, local-only decision than whatever is_approved
-  // says on the record - if the user just picked a different value, that
-  // takes visual priority over a possibly-stale "approved" from the server.
+  // Overriding is a newer decision than whatever is_approved says on the
+  // record - if the user just picked a different value, that takes visual
+  // priority over a possibly-stale "approved" from before the override.
   const isApproved = latest.is_approved && overriddenScore == null;
   const displayedScore = overriddenScore ?? meanScore;
 
@@ -55,8 +73,15 @@ function ReviewRow({ cow }) {
   }
 
   function startOverride() {
+    setPreOverrideScore(meanScore);
     setTempScore(meanScore ?? 3);
     setEditing(true);
+  }
+
+  function confirmOverride() {
+    setOverriddenScore(tempScore);
+    setEditing(false);
+    overrideMutation.mutate(tempScore);
   }
 
   return (
@@ -74,10 +99,13 @@ function ReviewRow({ cow }) {
           <div style={{ fontSize: '11.5px', color: '#166534', fontWeight: 600 }}>Approved as-is</div>
         )}
         {!isApproved && overriddenScore != null && (
-          <div style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 600 }}>Overridden from {formatScore(meanScore)}</div>
+          <div style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 600 }}>Overridden from {formatScore(preOverrideScore)}</div>
         )}
         {approveMutation.isError && (
           <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Approve failed - try again.</div>
+        )}
+        {overrideMutation.isError && (
+          <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Override failed - try again.</div>
         )}
       </div>
 
@@ -86,7 +114,7 @@ function ReviewRow({ cow }) {
           <button onClick={() => setTempScore((s) => Math.max(1, roundQuarter(s - 0.25)))} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #d8d2c2', cursor: 'pointer' }}>&minus;</button>
           <div style={{ fontSize: 18, fontWeight: 800, minWidth: 44, textAlign: 'center' }}>{formatScore(tempScore)}</div>
           <button onClick={() => setTempScore((s) => Math.min(5, roundQuarter(s + 0.25)))} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #d8d2c2', cursor: 'pointer' }}>+</button>
-          <button onClick={() => { setOverriddenScore(tempScore); setEditing(false); }} style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer' }}>Confirm</button>
+          <button onClick={confirmOverride} style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer' }}>Confirm</button>
           <button onClick={() => setEditing(false)} style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}>Cancel</button>
         </div>
       ) : (

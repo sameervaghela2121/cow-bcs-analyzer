@@ -15,6 +15,13 @@ const config = require('../config/env');
 const SAFE_ID_OR_FILENAME = /^[A-Za-z0-9._-]{1,128}$/;
 const ALLOWED_IMAGE_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+// BCS scores are always quarter-point increments everywhere else in this
+// system (ai-backend rounds every provider's final_bcs and the mean the
+// same way) - a manual override must land on the same scale.
+function roundQuarter(n) {
+  return Math.round(n * 4) / 4;
+}
+
 // Every cowsImages entry must be a gs:// URI in *our* bucket, under a
 // <cowsId>/<batchTimestamp>/<filename> path that actually matches the cowsId
 // being submitted — otherwise a caller could reference another cow's images,
@@ -149,4 +156,34 @@ async function approve(req, res, next) {
   }
 }
 
-module.exports = { generateUploadUrls, create, getOne, approve, serializeBcsAnalysis };
+async function override(req, res, next) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'BCS analysis record not found.' });
+    }
+    const { score } = req.body;
+    if (typeof score !== 'number' || Number.isNaN(score) || score < 1 || score > 5) {
+      return res.status(400).json({ error: 'score is required and must be a number between 1 and 5.' });
+    }
+
+    const analysis = await BcsAnalysis.findById(id);
+    if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
+    if (analysis.status !== 'completed') {
+      return res.status(409).json({ error: 'Only a completed analysis can be overridden.' });
+    }
+
+    // Only mean_bcs_score changes - the per-provider breakdown (claude/
+    // gemini/openai) already recorded stays intact for audit purposes.
+    analysis.bcsScore = { ...analysis.bcsScore, mean_bcs_score: roundQuarter(score) };
+    analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
+    analysis.updatedBy = req.user.id;
+    await analysis.save();
+
+    res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { generateUploadUrls, create, getOne, approve, override, serializeBcsAnalysis };

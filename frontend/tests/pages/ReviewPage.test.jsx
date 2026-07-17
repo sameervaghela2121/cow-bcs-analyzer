@@ -25,9 +25,17 @@ function renderReview() {
   );
 }
 
-// Mutates the same analysesByCow objects on approve, so a refetch after the
-// mutation (query invalidation) reflects the persisted is_approved - same as
-// hitting the real backend.
+// Mutates the same analysesByCow objects on approve/override, so a refetch
+// after the mutation (query invalidation) reflects what was persisted - same
+// as hitting the real backend.
+function findAnalysis(analysesByCow, id) {
+  for (const analyses of Object.values(analysesByCow)) {
+    const match = analyses.find((a) => a.id === id);
+    if (match) return match;
+  }
+  return null;
+}
+
 function mockCowsAndAnalyses({ cows, analysesByCow }) {
   server.use(
     http.get('http://localhost:4000/api/cows', () => HttpResponse.json({ cows, total: cows.length })),
@@ -35,14 +43,17 @@ function mockCowsAndAnalyses({ cows, analysesByCow }) {
       HttpResponse.json({ bcsAnalyses: analysesByCow[params.cowsId] || [], total: (analysesByCow[params.cowsId] || []).length })
     ),
     http.patch('http://localhost:4000/api/bcs-analysis/:id/approve', ({ params }) => {
-      for (const analyses of Object.values(analysesByCow)) {
-        const match = analyses.find((a) => a.id === params.id);
-        if (match) {
-          match.is_approved = true;
-          return HttpResponse.json({ bcsAnalysis: match });
-        }
-      }
-      return new HttpResponse(null, { status: 404 });
+      const match = findAnalysis(analysesByCow, params.id);
+      if (!match) return new HttpResponse(null, { status: 404 });
+      match.is_approved = true;
+      return HttpResponse.json({ bcsAnalysis: match });
+    }),
+    http.patch('http://localhost:4000/api/bcs-analysis/:id/override', async ({ params, request }) => {
+      const match = findAnalysis(analysesByCow, params.id);
+      if (!match) return new HttpResponse(null, { status: 404 });
+      const { score } = await request.json();
+      match.bcsScore = { ...match.bcsScore, mean_bcs_score: score };
+      return HttpResponse.json({ bcsAnalysis: match });
     })
   );
 }
@@ -76,7 +87,8 @@ describe('ReviewPage', () => {
     expect(screen.getByText('3.25')).toBeInTheDocument();
   });
 
-  it('prefills the override stepper with the mean BCS score, and confirming updates the displayed badge locally', async () => {
+  it('prefills the override stepper with the mean BCS score, and confirming persists it via PATCH /override', async () => {
+    let overrideBody;
     mockCowsAndAnalyses({
       cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
       analysesByCow: {
@@ -86,6 +98,17 @@ describe('ReviewPage', () => {
         }],
       },
     });
+    server.use(
+      http.patch('http://localhost:4000/api/bcs-analysis/a1/override', async ({ request }) => {
+        overrideBody = await request.json();
+        return HttpResponse.json({
+          bcsAnalysis: {
+            id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
+            bcsScore: { mean_bcs_score: overrideBody.score }, imageUrls: [], is_approved: false,
+          },
+        });
+      })
+    );
     renderReview();
     await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
 
@@ -99,6 +122,7 @@ describe('ReviewPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
     expect(screen.getByText('3.5')).toBeInTheDocument();
     expect(screen.getByText(/overridden from 3.25/i)).toBeInTheDocument();
+    await waitFor(() => expect(overrideBody).toEqual({ score: 3.5 }));
   });
 
   it('approving calls PATCH /bcs-analysis/:id/approve and keeps the mean score as-is - overriding is not mandatory', async () => {
