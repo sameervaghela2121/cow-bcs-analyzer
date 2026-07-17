@@ -70,10 +70,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(res.body.bcsAnalysis.status).toBe('not_started');
     expect(res.body.bcsAnalysis.bcsScore).toEqual({});
     expect(res.body.bcsAnalysis.createdBy).toBe(user._id.toString());
+    expect(res.body.bcsAnalysis.is_approved).toBe(false);
 
     const stored = await BcsAnalysis.findById(res.body.bcsAnalysis.id);
     expect(stored).toBeTruthy();
     expect(stored.cow).toBeTruthy();
+    expect(stored.is_approved).toBe(false);
   });
 
   it('rejects creation with a non gs:// image entry', async () => {
@@ -150,5 +152,159 @@ describe('bcs-analysis upload + create + poll flow', () => {
       .get('/api/bcs-analysis/000000000000000000000000')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(404);
+  });
+
+  describe('PATCH /api/bcs-analysis/:id/approve', () => {
+    it('sets is_approved to true on a completed analysis', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'completed',
+        bcsScore: { mean_bcs_score: 3.25 },
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/approve`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.bcsAnalysis.is_approved).toBe(true);
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.is_approved).toBe(true);
+    });
+
+    it('rejects approving an analysis that has not completed yet', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'processing',
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/approve`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(409);
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.is_approved).toBe(false);
+    });
+
+    it('returns 404 for an unknown id', async () => {
+      const res = await request(app)
+        .patch('/api/bcs-analysis/000000000000000000000000/approve')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PATCH /api/bcs-analysis/:id/override', () => {
+    it('updates only mean_bcs_score on a completed analysis, keeping the per-provider breakdown', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'completed',
+        bcsScore: {
+          mean_bcs_score: 3.25,
+          gemini: { final_bcs: 3.25, confidence: 'High', status: 'success' },
+        },
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/override`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ score: 3.5 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.bcsAnalysis.bcsScore.mean_bcs_score).toBe(3.5);
+      expect(res.body.bcsAnalysis.bcsScore.gemini).toEqual({ final_bcs: 3.25, confidence: 'High', status: 'success' });
+      // overriding is itself a review decision - counts as approved too
+      expect(res.body.bcsAnalysis.is_approved).toBe(true);
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.bcsScore.mean_bcs_score).toBe(3.5);
+      expect(stored.is_approved).toBe(true);
+    });
+
+    it('rounds an off-scale score to the nearest 0.25', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'completed',
+        bcsScore: { mean_bcs_score: 3.25 },
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/override`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ score: 3.4 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.bcsAnalysis.bcsScore.mean_bcs_score).toBe(3.5);
+    });
+
+    it('rejects a score outside 1-5', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'completed',
+        bcsScore: { mean_bcs_score: 3.25 },
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/override`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ score: 6 });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects overriding an analysis that has not completed yet', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'processing',
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/override`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ score: 3.5 });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 404 for an unknown id', async () => {
+      const res = await request(app)
+        .patch('/api/bcs-analysis/000000000000000000000000/override')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ score: 3.5 });
+      expect(res.status).toBe(404);
+    });
   });
 });

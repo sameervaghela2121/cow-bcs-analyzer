@@ -1,4 +1,5 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
@@ -16,6 +17,23 @@ function renderDetail() {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/herd/4417']}>
         <Routes>
+          <Route path="/herd/:cowsId" element={<CowDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+// Simulates arriving here from wherever the user actually came from - Review,
+// not always Herd - by seeding two history entries and landing on the second.
+function renderDetailArrivingFrom(previousPath) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[previousPath, '/herd/4417']} initialIndex={1}>
+        <Routes>
+          <Route path="/review" element={<div>Review page</div>} />
+          <Route path="/herd" element={<div>Herd page</div>} />
           <Route path="/herd/:cowsId" element={<CowDetailPage />} />
         </Routes>
       </MemoryRouter>
@@ -113,5 +131,17 @@ describe('CowDetailPage', () => {
     expect(pollCalls).toBe(callsAtCompletion);
 
     vi.useRealTimers();
+  });
+
+  it('back goes to wherever the user actually came from, not always /herd', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/cows/4417', () => HttpResponse.json({ cow: { id: 'c1', cowsId: '4417' } })),
+      http.get('http://localhost:4000/api/cows/4417/analyses', () => HttpResponse.json({ bcsAnalyses: [], total: 0 }))
+    );
+    renderDetailArrivingFrom('/review');
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText(/^back$/i));
+    expect(await screen.findByText('Review page')).toBeInTheDocument();
   });
 });

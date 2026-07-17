@@ -11,6 +11,10 @@ export const bcsAnalysisApi = {
     apiClient.post('/bcs-analysis', { cowsId, cowsImages }).then((r) => r.data.bcsAnalysis),
 
   get: (id) => apiClient.get(`/bcs-analysis/${id}`).then((r) => r.data.bcsAnalysis),
+
+  approve: (id) => apiClient.patch(`/bcs-analysis/${id}/approve`).then((r) => r.data.bcsAnalysis),
+
+  override: (id, score) => apiClient.patch(`/bcs-analysis/${id}/override`, { score }).then((r) => r.data.bcsAnalysis),
 };
 
 // Uploads go straight to GCS via a signed URL, never through the Node

@@ -12,6 +12,7 @@ const bcsAnalysisSchema = new mongoose.Schema(
     bcsScore: { type: mongoose.Schema.Types.Mixed, default: {} },
     status: { type: String, enum: ['not_started', 'processing', 'completed', 'failed'], default: 'not_started' },
     errorMessage: { type: String, default: null },
+    is_approved: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   },

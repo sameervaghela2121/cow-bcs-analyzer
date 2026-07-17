@@ -6,6 +6,7 @@ import '@fontsource/poppins/400.css';
 import './index.css';
 import App from './App.jsx';
 import { AuthProvider } from './auth/AuthContext.jsx';
+import { ToastProvider } from './components/ToastProvider.jsx';
 
 const queryClient = new QueryClient();
 
@@ -14,7 +15,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <ToastProvider>
+            <App />
+          </ToastProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
