@@ -115,7 +115,7 @@ describe('HerdPage', () => {
     server.use(
       http.get('http://localhost:4000/api/cows', ({ request }) => {
         lastPage = new URL(request.url).searchParams.get('page');
-        return HttpResponse.json(cowsPage(3, 50)); // 50 total / 20 per page = 3 pages
+        return HttpResponse.json(cowsPage(3, 25)); // 25 total / PAGE_SIZE (10) = 3 pages
       })
     );
     renderHerd(['/herd?page=3']);
@@ -129,7 +129,7 @@ describe('HerdPage', () => {
       http.get('http://localhost:4000/api/cows', ({ request }) => {
         const p = Number(new URL(request.url).searchParams.get('page')) || 1;
         requestedPages.push(p);
-        return HttpResponse.json(cowsPage(p, 45)); // 3 pages
+        return HttpResponse.json(cowsPage(p, 25)); // 3 pages
       })
     );
     renderHerd();
