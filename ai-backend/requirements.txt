@@ -4,6 +4,7 @@ pydantic>=2.8
 pydantic-settings>=2.4
 python-multipart>=0.0.9
 motor>=3.6
+google-cloud-storage>=2.18
 
 # LLM provider SDKs
 anthropic[bedrock]>=0.34

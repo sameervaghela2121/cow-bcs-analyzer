@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # --- MongoDB ---
     MONGODB_URL: str | None = None
 
+    # --- Google Cloud Storage ---
+    GCS_BUCKET_NAME: str = "sameerv-cow-bcs-images"
+    GCS_PROJECT_ID: str | None = "sameerv"
+    GCS_KEY_FILE: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

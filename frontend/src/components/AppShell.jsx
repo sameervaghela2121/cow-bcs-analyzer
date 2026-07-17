@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+// import { useQuery } from '@tanstack/react-query';
 import { Moon, Sun } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { THEMES } from '../domain/bcs.js';
-import { reviewApi } from '../api/review.js';
+// import { reviewApi } from '../api/review.js';
 import './AppShell.css';
 
 const navBase = { padding: '10px 12px', borderRadius: 8, fontSize: '13.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, color: '#eee8d8', textDecoration: 'none' };
@@ -15,8 +15,12 @@ export default function AppShell() {
   const [theme, setTheme] = useState('light');
   const isAdmin = user?.role === 'admin';
   const rootStyle = { ...THEMES[theme], display: 'flex', height: '100%', width: '100%', background: 'var(--bg-page)', color: 'var(--text-primary)' };
-  const { data: queueItems } = useQuery({ queryKey: ['review-queue'], queryFn: reviewApi.queue });
-  const flaggedCount = queueItems?.length || 0;
+  // Temporarily disabled: /api/review/queue no longer exists on the backend
+  // (review workflow removed in the schema overhaul). This was firing a 404
+  // on every page since AppShell wraps every route. Re-enable once the
+  // review page/endpoint is rebuilt against the new schema.
+  // const { data: queueItems } = useQuery({ queryKey: ['review-queue'], queryFn: reviewApi.queue });
+  const flaggedCount = 0;
 
   return (
     <div style={rootStyle}>

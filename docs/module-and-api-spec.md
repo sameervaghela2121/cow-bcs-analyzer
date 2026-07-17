@@ -1,4 +1,10 @@
-# BCS Tracker — Module & API Analysis
+ # BCS Tracker — Module & API Analysis
+
+> **Superseded in part** by [`docs/bcs-analysis-v2-architecture.md`](./bcs-analysis-v2-architecture.md):
+> media storage (Decision D7 below, now GCS direct-upload) and the readings/review/audit-approval
+> schema and endpoints (§4 `readings`, "Review" module/endpoints below) were replaced by the
+> `bcs_analysis` collection and a GCS-signed-URL upload flow. The domain rules in §2 and the
+> non-review frontend modules in §3 are still current background reading.
 
 Derived from `html-reference/BCS Tracker.dc.html` (the clickable prototype) and the
 existing `ai-backend/` FastAPI service. This is an analysis document — no implementation.

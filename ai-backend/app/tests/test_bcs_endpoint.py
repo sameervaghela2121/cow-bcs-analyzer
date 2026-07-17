@@ -58,10 +58,6 @@ async def test_assess_bcs_fans_out_to_all_providers():
             "app.services.llm.openai_provider.OpenAIProvider.analyze_images",
             new=AsyncMock(side_effect=RuntimeError("simulated quota error")),
         ),
-        patch(
-            "app.services.bcs_service.save_assessment",
-            new=AsyncMock(return_value=None),
-        ),
     ):
         response = client.post("/api/bcs/assess", files=files)
 
@@ -88,10 +84,6 @@ async def test_assess_bcs_can_be_narrowed_to_a_subset():
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
             new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
-        ),
-        patch(
-            "app.services.bcs_service.save_assessment",
-            new=AsyncMock(return_value=None),
         ),
     ):
         response = client.post("/api/bcs/assess?providers=gemini", files=files)

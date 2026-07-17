@@ -4,6 +4,7 @@ MongoDB connection and persistence layer using motor (async driver).
 from datetime import datetime, timezone
 from typing import Any
 
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.errors import ConfigurationError
 
@@ -32,20 +33,22 @@ def get_db() -> AsyncIOMotorDatabase | None:
     return _db
 
 
-async def save_assessment(record: dict[str, Any]) -> str | None:
-    """
-    Insert a BCS assessment record into MongoDB.
-    Returns the inserted document ID as a string, or None if DB is not configured.
-    """
+async def get_bcs_analysis(analysis_id: ObjectId) -> dict[str, Any] | None:
+    """Fetch a bcs_analysis record by _id. Returns None if not found or DB unconfigured."""
     db = get_db()
     if db is None:
-        logger.debug("MongoDB not configured, skipping persistence.")
         return None
+    return await db.bcs_analysis.find_one({"_id": analysis_id})
 
-    record["created_at"] = datetime.now(timezone.utc)
-    result = await db.bcs_assessments.insert_one(record)
-    logger.info("Assessment saved to MongoDB with _id=%s", result.inserted_id)
-    return str(result.inserted_id)
+
+async def update_bcs_analysis(analysis_id: ObjectId, fields: dict[str, Any]) -> None:
+    """Set the given fields on a bcs_analysis record, stamping updatedAt to match Mongoose."""
+    db = get_db()
+    if db is None:
+        logger.warning("MongoDB not configured, cannot update bcs_analysis %s.", analysis_id)
+        return
+    fields = {**fields, "updatedAt": datetime.now(timezone.utc)}
+    await db.bcs_analysis.update_one({"_id": analysis_id}, {"$set": fields})
 
 
 async def close_connection() -> None:

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+// import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { reviewApi } from '../api/review.js';
 import Thumbnail from '../components/Thumbnail.jsx';
 import ConfidencePill from '../components/ConfidencePill.jsx';
@@ -14,13 +14,17 @@ function roundQuarter(n) {
 }
 
 export default function ReviewPage() {
-  const queryClient = useQueryClient();
-  const { data: items = [] } = useQuery({ queryKey: ['review-queue'], queryFn: reviewApi.queue });
+  // Temporarily disabled: /api/review/queue no longer exists on the backend
+  // (review workflow removed in the schema overhaul). Re-enable once the
+  // review endpoints are rebuilt against the new schema.
+  // const queryClient = useQueryClient();
+  // const { data: items = [] } = useQuery({ queryKey: ['review-queue'], queryFn: reviewApi.queue });
+  const items = [];
   const [editingId, setEditingId] = useState(null);
   const [tempScore, setTempScore] = useState(0);
 
   function refetch() {
-    queryClient.invalidateQueries({ queryKey: ['review-queue'] });
+    // queryClient.invalidateQueries({ queryKey: ['review-queue'] });
   }
 
   async function approve(id) {

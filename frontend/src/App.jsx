@@ -21,7 +21,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/herd" replace />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/herd" element={<HerdPage />} />
-          <Route path="/herd/:cowId" element={<CowDetailPage />} />
+          <Route path="/herd/:cowsId" element={<CowDetailPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route element={<RequireRole role="admin" />}>

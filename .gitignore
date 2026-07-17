@@ -2,6 +2,10 @@
 .env
 .env.*
 
+# GCS service account keys
+credentials/
+*-key.json
+
 # Python
 .venv/
 venv/
