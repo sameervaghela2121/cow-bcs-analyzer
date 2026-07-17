@@ -22,6 +22,25 @@ function roundQuarter(n) {
   return Math.round(n * 4) / 4;
 }
 
+const SELECTABLE_PROVIDERS = ['claude', 'gemini', 'openai'];
+
+// Exactly one of median_bcs_score / claude / gemini / openai is ever the
+// "selected" final score for an analysis - clear every is_selected flag
+// before setting the one the reviewer just picked, so switching their pick
+// (median -> a provider, or vice versa) never leaves two flags true at once.
+function clearSelections(bcsScore) {
+  const next = { ...(bcsScore || {}) };
+  if (next.median_bcs_score) {
+    next.median_bcs_score = { ...next.median_bcs_score, is_selected: false };
+  }
+  for (const name of SELECTABLE_PROVIDERS) {
+    if (next[name]) {
+      next[name] = { ...next[name], is_selected: false };
+    }
+  }
+  return next;
+}
+
 // Every cowsImages entry must be a gs:// URI in *our* bucket, under a
 // <cowsId>/<batchTimestamp>/<filename> path that actually matches the cowsId
 // being submitted — otherwise a caller could reference another cow's images,
@@ -146,6 +165,49 @@ async function approve(req, res, next) {
       return res.status(409).json({ error: 'Only a completed analysis can be approved.' });
     }
 
+    // Direct approval (no provider checkbox picked) means accepting the
+    // median as the final score.
+    const bcsScore = clearSelections(analysis.bcsScore);
+    bcsScore.median_bcs_score = { ...bcsScore.median_bcs_score, is_selected: true };
+    analysis.bcsScore = bcsScore;
+    analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
+    analysis.is_approved = true;
+    analysis.updatedBy = req.user.id;
+    await analysis.save();
+
+    res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function selectProviderScore(req, res, next) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'BCS analysis record not found.' });
+    }
+    const { provider } = req.body;
+    if (!SELECTABLE_PROVIDERS.includes(provider)) {
+      return res.status(400).json({ error: `provider must be one of: ${SELECTABLE_PROVIDERS.join(', ')}.` });
+    }
+
+    const analysis = await BcsAnalysis.findById(id);
+    if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
+    if (analysis.status !== 'completed') {
+      return res.status(409).json({ error: 'Only a completed analysis can be reviewed.' });
+    }
+    const providerScore = analysis.bcsScore?.[provider];
+    if (!providerScore || providerScore.status !== 'success' || providerScore.final_bcs == null) {
+      return res.status(400).json({ error: `'${provider}' has no successful score to select.` });
+    }
+
+    // Checking a provider's checkbox means using *that* model's score as
+    // the final one instead of the median.
+    const bcsScore = clearSelections(analysis.bcsScore);
+    bcsScore[provider] = { ...bcsScore[provider], is_selected: true };
+    analysis.bcsScore = bcsScore;
+    analysis.markModified('bcsScore');
     analysis.is_approved = true;
     analysis.updatedBy = req.user.id;
     await analysis.save();
@@ -173,12 +235,17 @@ async function override(req, res, next) {
       return res.status(409).json({ error: 'Only a completed analysis can be overridden.' });
     }
 
-    // Only mean_bcs_score changes - the per-provider breakdown (claude/
-    // gemini/openai) already recorded stays intact for audit purposes.
-    analysis.bcsScore = { ...analysis.bcsScore, mean_bcs_score: roundQuarter(score) };
+    // A manual override replaces median_bcs_score.score with the reviewer's
+    // own value - the per-provider breakdown (claude/gemini/openai) already
+    // recorded stays intact for audit purposes, and mean_bcs_score is left
+    // untouched too (it's the AI's own computed average, not something a
+    // human override should silently rewrite).
+    const bcsScore = clearSelections(analysis.bcsScore);
+    bcsScore.median_bcs_score = { score: roundQuarter(score), is_selected: true };
+    analysis.bcsScore = bcsScore;
     analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
     // Overriding is itself a review decision - a reviewer picking the value
-    // by hand is at least as final as approving the mean as-is, so this
+    // by hand is at least as final as approving the median as-is, so this
     // counts as reviewed too and drops off the review list the same way.
     analysis.is_approved = true;
     analysis.updatedBy = req.user.id;
@@ -190,4 +257,4 @@ async function override(req, res, next) {
   }
 }
 
-module.exports = { generateUploadUrls, create, getOne, approve, override, serializeBcsAnalysis };
+module.exports = { generateUploadUrls, create, getOne, approve, selectProviderScore, override, serializeBcsAnalysis };
