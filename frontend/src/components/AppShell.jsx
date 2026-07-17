@@ -3,7 +3,6 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { THEME } from '../domain/bcs.js';
-// import { reviewApi } from '../api/review.js';
 import './AppShell.css';
 
 const navBase = { padding: '10px 12px', borderRadius: 8, fontSize: '13.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, color: '#eee8d8', textDecoration: 'none' };
