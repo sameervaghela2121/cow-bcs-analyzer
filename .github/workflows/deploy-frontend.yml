@@ -1,0 +1,51 @@
+name: Deploy Frontend
+
+# Vite bakes these into the static bundle at build time - hardcoded here
+# rather than looked up, since Cloud Run URLs are stable across redeploys
+# of bcs-backend/bcs-ai-backend, so this workflow doesn't need to wait on
+# (or even know whether) those two ran in this same trigger.
+on:
+  workflow_dispatch: {}
+  workflow_call: {}
+
+env:
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev/sameerv/bcs-tracker
+  BACKEND_URL: https://bcs-backend-1081873675658.us-central1.run.app
+  AI_BACKEND_URL: https://bcs-ai-backend-1081873675658.us-central1.run.app
+
+permissions:
+  contents: read
+  id-token: write # required for Workload Identity Federation
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        working-directory: frontend
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=${{ env.BACKEND_URL }}/api \
+            --build-arg VITE_AI_BACKEND_URL=${{ env.AI_BACKEND_URL }} \
+            -t ${{ env.REGISTRY }}/frontend:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/frontend:${{ github.sha }}
+
+      - uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: bcs-frontend
+          region: ${{ env.REGION }}
+          image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
+          service_account: bcs-frontend-run@sameerv.iam.gserviceaccount.com
+          flags: --allow-unauthenticated --port=8080 --memory=256Mi --min-instances=0 --max-instances=5

@@ -1,0 +1,47 @@
+name: Deploy All (Cloud Run)
+
+# Auto-deploys on every push to main, but only the service(s) whose files
+# actually changed. The manual "Run workflow" button skips that check and
+# always deploys all three - the "deploy everything" option.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      ai-backend: ${{ steps.filter.outputs.ai-backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            ai-backend:
+              - 'ai-backend/**'
+            frontend:
+              - 'frontend/**'
+
+  deploy-backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/deploy-backend.yml
+    secrets: inherit
+
+  deploy-ai-backend:
+    needs: changes
+    if: needs.changes.outputs.ai-backend == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/deploy-ai-backend.yml
+    secrets: inherit
+
+  deploy-frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/deploy-frontend.yml
+    secrets: inherit

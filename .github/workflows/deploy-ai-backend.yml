@@ -1,0 +1,60 @@
+name: Deploy AI Backend
+
+on:
+  workflow_dispatch: {}
+  workflow_call: {}
+
+env:
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev/sameerv/bcs-tracker
+
+permissions:
+  contents: read
+  id-token: write # required for Workload Identity Federation
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        working-directory: ai-backend
+        run: |
+          docker build -t ${{ env.REGISTRY }}/ai-backend:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/ai-backend:${{ github.sha }}
+
+      - uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: bcs-ai-backend
+          region: ${{ env.REGION }}
+          image: ${{ env.REGISTRY }}/ai-backend:${{ github.sha }}
+          service_account: bcs-ai-backend-reader@sameerv.iam.gserviceaccount.com
+          flags: --allow-unauthenticated --port=8080 --memory=1Gi --cpu=1 --min-instances=0 --max-instances=3 --timeout=300
+          env_vars: |
+            ENV=production
+            DEBUG=false
+            DEFAULT_LLM_PROVIDER=gemini
+            OPENAI_VISION_MODEL=gpt-4.1
+            CLAUDE_VISION_MODEL=us.anthropic.claude-sonnet-4-6
+            GEMINI_VISION_MODEL=gemini-3.5-flash
+            MAX_IMAGE_SIZE_MB=10
+            AWS_REGION=us-east-1
+            GCS_BUCKET_NAME=sameerv-cow-bcs-images
+            GCS_PROJECT_ID=sameerv
+          secrets: |
+            MONGODB_URL=bcs-mongodb-url:latest
+            OPENAI_API_KEY=bcs-openai-api-key:latest
+            ANTHROPIC_API_KEY=bcs-anthropic-api-key:latest
+            GEMINI_API_KEY=bcs-gemini-api-key:latest
+            AWS_ACCESS_KEY_ID=bcs-aws-access-key-id:latest
+            AWS_SECRET_ACCESS_KEY=bcs-aws-secret-access-key:latest
