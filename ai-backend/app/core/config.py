@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # --- App ---
-    APP_NAME: str = "AI-TOPIK / Vision GenAI Service"
+    APP_NAME: str = "BCS-Tracker/ Vision GenAI Service"
     ENV: str = "local"
     DEBUG: bool = True
 
