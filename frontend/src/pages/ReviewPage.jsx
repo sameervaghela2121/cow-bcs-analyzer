@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { cowsApi } from '../api/cows.js';
 import { bcsAnalysisApi } from '../api/bcsAnalysis.js';
 import Badge from '../components/Badge.jsx';
+import { useToast } from '../components/ToastProvider.jsx';
 import { formatScore } from '../domain/bcs.js';
 
 function fmtDate(iso) {
@@ -13,14 +14,14 @@ function roundQuarter(n) {
   return Math.round(n * 4) / 4;
 }
 
-// Approve (PATCH .../approve, sets is_approved) and Override (PATCH
-// .../override, overwrites bcsScore.mean_bcs_score in place - the
-// per-provider claude/gemini/openai breakdown is left untouched) both
-// persist to the record itself, which is what drives this row's state -
-// not local component state - after either mutation settles.
+// Approve (PATCH .../approve) and Override (PATCH .../override) both set
+// is_approved on the record - overriding is itself a review decision, just
+// as final as approving the mean as-is - so either one persists the record
+// and drops this row off the review list once the cows list reflects it.
 function ReviewRow({ cow }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const { data } = useQuery({
     queryKey: ['cow-analyses', cow.cowsId],
     queryFn: () => cowsApi.analyses(cow.cowsId),
@@ -33,10 +34,6 @@ function ReviewRow({ cow }) {
 
   const [editing, setEditing] = useState(false);
   const [tempScore, setTempScore] = useState(0);
-  // Overriding replaces mean_bcs_score in Mongo directly - there's no
-  // separate "original mean" kept anywhere once that happens, so this local
-  // value (and the "Overridden from X" line) only lasts for this session;
-  // after a reload the new value just is the mean, same as any other.
   const [overriddenScore, setOverriddenScore] = useState(null);
   // Captured at the moment Override is opened - meanScore itself becomes the
   // *new* value once the mutation's invalidation refetch lands, so reading
@@ -44,26 +41,31 @@ function ReviewRow({ cow }) {
   // twice instead of the value being replaced.
   const [preOverrideScore, setPreOverrideScore] = useState(null);
 
-  function invalidate() {
+  // Both mutations end up changing whether this cow still belongs in the
+  // review list (latestAnalysisIsApproved, on the cows list), not just this
+  // row's own analysis detail - both queries need refreshing either way.
+  function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ['cow-analyses', cow.cowsId] });
+    queryClient.invalidateQueries({ queryKey: ['cows'] });
   }
 
   const approveMutation = useMutation({
     mutationFn: () => bcsAnalysisApi.approve(latest.id),
     onSuccess: () => {
       setOverriddenScore(null);
-      invalidate();
-      // The cows list (not just this row's own analyses) carries
-      // latestAnalysisIsApproved, which is what ReviewPage filters on to
-      // drop a row once it's approved - refresh it too, or this row would
-      // stick around showing "Approved" instead of actually disappearing.
-      queryClient.invalidateQueries({ queryKey: ['cows'] });
+      invalidateAll();
+      showToast('Approved successfully.');
     },
+    onError: () => showToast('Failed to approve - please try again.', { type: 'error' }),
   });
 
   const overrideMutation = useMutation({
     mutationFn: (score) => bcsAnalysisApi.override(latest.id, score),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidateAll();
+      showToast('Override saved successfully.');
+    },
+    onError: () => showToast('Failed to save override - please try again.', { type: 'error' }),
   });
 
   if (!latest) return null;

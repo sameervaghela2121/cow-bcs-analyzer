@@ -231,9 +231,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
       expect(res.status).toBe(200);
       expect(res.body.bcsAnalysis.bcsScore.mean_bcs_score).toBe(3.5);
       expect(res.body.bcsAnalysis.bcsScore.gemini).toEqual({ final_bcs: 3.25, confidence: 'High', status: 'success' });
+      // overriding is itself a review decision - counts as approved too
+      expect(res.body.bcsAnalysis.is_approved).toBe(true);
 
       const stored = await BcsAnalysis.findById(analysis._id);
       expect(stored.bcsScore.mean_bcs_score).toBe(3.5);
+      expect(stored.is_approved).toBe(true);
     });
 
     it('rounds an off-scale score to the nearest 0.25', async () => {

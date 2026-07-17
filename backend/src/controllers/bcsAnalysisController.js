@@ -177,6 +177,10 @@ async function override(req, res, next) {
     // gemini/openai) already recorded stays intact for audit purposes.
     analysis.bcsScore = { ...analysis.bcsScore, mean_bcs_score: roundQuarter(score) };
     analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
+    // Overriding is itself a review decision - a reviewer picking the value
+    // by hand is at least as final as approving the mean as-is, so this
+    // counts as reviewed too and drops off the review list the same way.
+    analysis.is_approved = true;
     analysis.updatedBy = req.user.id;
     await analysis.save();
 
