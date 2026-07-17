@@ -55,14 +55,18 @@ describe('CowDetailPage', () => {
               status: 'completed',
               createdAt: '2026-07-10T00:00:00Z',
               imageUrls: ['https://storage.googleapis.com/a2-img1.jpg'],
-              bcsScore: { gemini: { final_bcs: 3.25, confidence: 'High', status: 'success' } },
+              bcsScore: {
+                gemini: { final_bcs: 3.25, confidence: 'High', status: 'success' },
+                claude: { final_bcs: 3.0, confidence: 'Medium', status: 'success' },
+                mean_bcs_score: 3.25,
+              },
             },
             {
               id: 'a1',
               status: 'completed',
               createdAt: '2026-07-01T00:00:00Z',
               imageUrls: ['https://storage.googleapis.com/a1-img1.jpg'],
-              bcsScore: { gemini: { final_bcs: 3.0, confidence: 'Medium', status: 'success' } },
+              bcsScore: { gemini: { final_bcs: 3.0, confidence: 'Medium', status: 'success' }, mean_bcs_score: 3.0 },
             },
           ],
           total: 2,
@@ -72,9 +76,11 @@ describe('CowDetailPage', () => {
     renderDetail();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
     expect(screen.getAllByText(/completed/i).length).toBe(2);
-    const scoreLines = screen.getAllByText(/gemini/i).map((el) => el.closest('div').textContent);
-    expect(scoreLines.some((t) => t.includes('3.25'))).toBe(true);
-    expect(scoreLines.some((t) => t.includes('Medium'))).toBe(true);
+    // Shows the single mean score, not a per-provider breakdown.
+    expect(screen.getByText('3.25')).toBeInTheDocument();
+    expect(screen.getByText('3.0')).toBeInTheDocument();
+    expect(screen.queryByText(/gemini/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/claude/i)).not.toBeInTheDocument();
   });
 
   it('polls a pending analysis every 10s and stops once it completes', async () => {
@@ -101,7 +107,7 @@ describe('CowDetailPage', () => {
             id: 'a3',
             status: done ? 'completed' : 'processing',
             imageUrls: [],
-            bcsScore: done ? { gemini: { final_bcs: 3.5, confidence: 'High', status: 'success' } } : {},
+            bcsScore: done ? { gemini: { final_bcs: 3.5, confidence: 'High', status: 'success' }, mean_bcs_score: 3.5 } : {},
           },
         });
       })

@@ -38,7 +38,14 @@ jobs:
           service: bcs-ai-backend
           region: ${{ env.REGION }}
           image: ${{ env.REGISTRY }}/ai-backend:${{ github.sha }}
-          flags: --allow-unauthenticated --port=8080 --memory=1Gi --cpu=1 --min-instances=0 --max-instances=3 --timeout=300 --service-account=bcs-ai-backend-reader@sameerv.iam.gserviceaccount.com
+          # --no-cpu-throttling: analysis runs in a FastAPI BackgroundTask
+          # that keeps executing (GCS downloads, LLM calls) after the HTTP
+          # response is already sent. Cloud Run's default only allocates
+          # CPU during the request/response cycle, so without this flag
+          # that background work gets starved of CPU once the response
+          # flushes - which shows up as GCS downloads dying mid-TLS-
+          # handshake (SSLEOFError) and hitting their 120s timeout.
+          flags: --allow-unauthenticated --port=8080 --memory=1Gi --cpu=1 --min-instances=0 --max-instances=3 --timeout=300 --no-cpu-throttling --service-account=bcs-ai-backend-reader@sameerv.iam.gserviceaccount.com
           env_vars: |
             ENV=production
             DEBUG=false

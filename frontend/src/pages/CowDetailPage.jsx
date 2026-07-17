@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { cowsApi } from '../api/cows.js';
 import { usePollBcsAnalysis } from '../hooks/usePollBcsAnalysis.js';
 import { statusLabel, statusColor, PENDING_STATUSES } from '../domain/analysisStatus.js';
+import { formatScore, bandFor } from '../domain/bcs.js';
 
 function fmtDate(iso) {
   const d = new Date(iso);
@@ -28,16 +29,17 @@ function AnalysisImages({ imageUrls }) {
   );
 }
 
-function ProviderScores({ bcsScore }) {
-  const entries = Object.entries(bcsScore || {}).filter(([, r]) => r?.status === 'success' && r?.final_bcs != null);
-  if (entries.length === 0) return null;
+// bcsScore.mean_bcs_score is the average of final_bcs across whichever
+// providers succeeded (computed server-side in ai-backend) - shown as the
+// single overall score rather than breaking it out per-provider.
+function MeanScore({ bcsScore }) {
+  const score = bcsScore?.mean_bcs_score;
+  if (score == null) return null;
+  const band = bandFor(score);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
-      {entries.map(([name, r]) => (
-        <div key={name} style={{ fontSize: 12, color: '#4b4536' }}>
-          <strong style={{ textTransform: 'capitalize' }}>{name}</strong>: {r.final_bcs} ({r.confidence})
-        </div>
-      ))}
+    <div style={{ textAlign: 'right' }}>
+      <div style={{ fontSize: 20, fontWeight: 800, color: band.color }}>{formatScore(score)}</div>
+      <div style={{ fontSize: 11, color: '#82796a' }}>{band.label}</div>
     </div>
   );
 }
@@ -60,7 +62,7 @@ function AnalysisRow({ analysis: initial }) {
           {analysis.status === 'failed' && analysis.errorMessage ? `: ${analysis.errorMessage}` : ''}
         </div>
       </div>
-      {analysis.status === 'completed' && <ProviderScores bcsScore={analysis.bcsScore} />}
+      {analysis.status === 'completed' && <MeanScore bcsScore={analysis.bcsScore} />}
     </div>
   );
 }
