@@ -8,6 +8,17 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# The reusable workflows this file calls each request id-token: write (for
+# WIF). A caller can only delegate permissions it actually holds, and with
+# no permissions: block here this workflow got whatever the repo's default
+# is - which apparently doesn't include id-token: write, so every call was
+# rejected before any job ran (0 jobs, startup_failure, no error text
+# anywhere - the standalone workflows ran fine on their own since they each
+# declare this same block directly).
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   changes:
     runs-on: ubuntu-latest
