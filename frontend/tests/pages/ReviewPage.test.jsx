@@ -88,6 +88,50 @@ describe('ReviewPage', () => {
     expect(screen.getByText(/overridden from 3.25/i)).toBeInTheDocument();
   });
 
+  it('approving keeps the mean score as-is - overriding is not mandatory', async () => {
+    mockCowsAndAnalyses({
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
+      analysesByCow: {
+        4417: [{
+          id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [],
+        }],
+      },
+    });
+    renderReview();
+    await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+    expect(screen.getByText('3.25')).toBeInTheDocument();
+    expect(screen.getByText(/approved as-is/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^approved$/i })).toBeInTheDocument();
+  });
+
+  it('overriding after approving discards the approval and shows the overridden value instead', async () => {
+    mockCowsAndAnalyses({
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],
+      analysesByCow: {
+        4417: [{
+          id: 'a1', createdAt: '2026-07-10T00:00:00Z', status: 'completed',
+          bcsScore: { mean_bcs_score: 3.25 }, imageUrls: [],
+        }],
+      },
+    });
+    renderReview();
+    await waitFor(() => expect(screen.getByText('3.25')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+    expect(screen.getByText(/approved as-is/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /override/i }));
+    await userEvent.click(screen.getByRole('button', { name: '+' }));
+    await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
+
+    expect(screen.getByText('3.5')).toBeInTheDocument();
+    expect(screen.getByText(/overridden from 3.25/i)).toBeInTheDocument();
+    expect(screen.queryByText(/approved as-is/i)).not.toBeInTheDocument();
+  });
+
   it('navigates to the cow detail page when a row is clicked', async () => {
     mockCowsAndAnalyses({
       cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed' }],

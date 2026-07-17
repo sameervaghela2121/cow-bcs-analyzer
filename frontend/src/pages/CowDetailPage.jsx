@@ -79,8 +79,8 @@ export default function CowDetailPage() {
 
   return (
     <div style={{ padding: '28px 28px 60px' }}>
-      <div onClick={() => navigate('/herd')} style={{ cursor: 'pointer', color: '#166534', fontWeight: 600, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ArrowLeft size={16} /> Back to herd
+      <div onClick={() => navigate(-1)} style={{ cursor: 'pointer', color: '#166534', fontWeight: 600, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <ArrowLeft size={16} /> Back
       </div>
       <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 22px' }}>Cow {cow.cowsId}</h1>
 

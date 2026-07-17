@@ -32,12 +32,27 @@ function ReviewRow({ cow }) {
   const [editing, setEditing] = useState(false);
   const [tempScore, setTempScore] = useState(0);
   const [overriddenScore, setOverriddenScore] = useState(null);
+  const [approved, setApproved] = useState(false);
 
   if (!latest) return null;
   const displayedScore = overriddenScore ?? meanScore;
 
   function goToCow() {
     navigate(`/herd/${cow.cowsId}`);
+  }
+
+  // Approving isn't mandatory - the mean score stands as-is by default.
+  // Approve just confirms that explicitly (discarding any pending override,
+  // since the two are mutually exclusive outcomes for the same row).
+  function handleApprove() {
+    setOverriddenScore(null);
+    setApproved(true);
+  }
+
+  function startOverride() {
+    setTempScore(meanScore ?? 3);
+    setApproved(false);
+    setEditing(true);
   }
 
   return (
@@ -51,7 +66,10 @@ function ReviewRow({ cow }) {
       <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={goToCow}>
         <div style={{ fontSize: '14.5px', fontWeight: 700 }}>Cow {cow.cowsId}</div>
         <div style={{ fontSize: '12.5px', color: '#82796a' }}>Last analyzed {fmtDate(latest.createdAt)}</div>
-        {overriddenScore != null && (
+        {approved && (
+          <div style={{ fontSize: '11.5px', color: '#166534', fontWeight: 600 }}>Approved as-is</div>
+        )}
+        {!approved && overriddenScore != null && (
           <div style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 600 }}>Overridden from {formatScore(meanScore)}</div>
         )}
       </div>
@@ -68,7 +86,16 @@ function ReviewRow({ cow }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Badge score={displayedScore} />
           <button
-            onClick={() => { setTempScore(meanScore ?? 3); setEditing(true); }}
+            onClick={handleApprove}
+            style={{
+              padding: '8px 14px', borderRadius: 7, border: '1px solid #166534', cursor: 'pointer', fontWeight: 700,
+              background: approved ? '#166534' : '#fff', color: approved ? '#fff' : '#166534',
+            }}
+          >
+            {approved ? 'Approved' : 'Approve'}
+          </button>
+          <button
+            onClick={startOverride}
             style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}
           >
             Override
