@@ -178,6 +178,36 @@ describe('bcs-analysis upload + create + poll flow', () => {
       expect(stored.is_approved).toBe(true);
     });
 
+    it('stamps updatedBy as the approving user (not whoever created the record) and bumps updatedAt', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'completed',
+        bcsScore: { mean_bcs_score: 3.25 },
+        createdBy: user._id, // the uploader
+        updatedBy: user._id,
+      });
+      const originalUpdatedAt = analysis.updatedAt;
+
+      const reviewer = await User.create({ email: 'reviewer@example.com', name: 'Reviewer', role: 'staff', status: 'active', passwordHash: 'x' });
+      await new Promise((r) => setTimeout(r, 10)); // ensure updatedAt would actually move if bumped
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/approve`)
+        .set('Authorization', `Bearer ${tokenFor(reviewer)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.bcsAnalysis.updatedBy).toBe(reviewer._id.toString());
+      expect(new Date(res.body.bcsAnalysis.updatedAt).getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.updatedBy.toString()).toBe(reviewer._id.toString());
+      expect(stored.createdBy.toString()).toBe(user._id.toString()); // untouched
+      expect(stored.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+    });
+
     it('rejects approving an analysis that has not completed yet', async () => {
       const cow = await Cow.create({ cowsId: '3124' });
       const analysis = await BcsAnalysis.create({
@@ -237,6 +267,37 @@ describe('bcs-analysis upload + create + poll flow', () => {
       const stored = await BcsAnalysis.findById(analysis._id);
       expect(stored.bcsScore.mean_bcs_score).toBe(3.5);
       expect(stored.is_approved).toBe(true);
+    });
+
+    it('stamps updatedBy as the overriding user (not whoever created the record) and bumps updatedAt', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'completed',
+        bcsScore: { mean_bcs_score: 3.25 },
+        createdBy: user._id, // the uploader
+        updatedBy: user._id,
+      });
+      const originalUpdatedAt = analysis.updatedAt;
+
+      const reviewer = await User.create({ email: 'reviewer2@example.com', name: 'Reviewer', role: 'staff', status: 'active', passwordHash: 'x' });
+      await new Promise((r) => setTimeout(r, 10)); // ensure updatedAt would actually move if bumped
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/override`)
+        .set('Authorization', `Bearer ${tokenFor(reviewer)}`)
+        .send({ score: 3.5 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.bcsAnalysis.updatedBy).toBe(reviewer._id.toString());
+      expect(new Date(res.body.bcsAnalysis.updatedAt).getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.updatedBy.toString()).toBe(reviewer._id.toString());
+      expect(stored.createdBy.toString()).toBe(user._id.toString()); // untouched
+      expect(stored.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
     });
 
     it('rounds an off-scale score to the nearest 0.25', async () => {
