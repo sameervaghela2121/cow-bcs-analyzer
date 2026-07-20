@@ -11,8 +11,7 @@ const {
   generateReadUrl,
 } = require('../services/gcsService');
 const { triggerCompression } = require('../services/imageCompressorClient');
-const { buildVariantObjectPath } = require('../../../image-compressor/src/paths');
-const { THUMBNAIL, DISPLAY } = require('../../../image-compressor/src/config');
+const { THUMBNAIL, DISPLAY, buildVariantObjectPath } = require('../services/imageVariants');
 const config = require('../config/env');
 
 const SAFE_ID_OR_FILENAME = /^[A-Za-z0-9._-]{1,128}$/;

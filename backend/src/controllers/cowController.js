@@ -2,8 +2,7 @@ const Cow = require('../models/Cow');
 const BcsAnalysis = require('../models/BcsAnalysis');
 const { serializeBcsAnalysis } = require('./bcsAnalysisController');
 const { fromGsUri, generateReadUrl } = require('../services/gcsService');
-const { buildVariantObjectPath } = require('../../../image-compressor/src/paths');
-const { THUMBNAIL } = require('../../../image-compressor/src/config');
+const { THUMBNAIL, buildVariantObjectPath } = require('../services/imageVariants');
 
 // Cover photo for the herd grid card: the latest analysis's first image,
 // as its compressed 300X300 thumbnail variant. latestAnalysisImageUrl (the
