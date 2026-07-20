@@ -70,7 +70,12 @@ def test_analyze_marks_processing_then_completed_on_success():
     assert calls[0].args == (analysis_id, {"status": "processing"})
     assert calls[1].args[0] == analysis_id
     assert calls[1].args[1]["status"] == "completed"
-    assert calls[1].args[1]["bcsScore"] == fake_result.model_dump()
+    # mean_bcs_score is written as a root-level sibling of bcsScore, not
+    # nested inside it - as it was before median/per-provider selection
+    expected_fields = fake_result.model_dump()
+    expected_mean = expected_fields.pop("mean_bcs_score")
+    assert calls[1].args[1]["bcsScore"] == expected_fields
+    assert calls[1].args[1]["mean_bcs_score"] == expected_mean
 
 
 def test_analyze_skips_a_failed_image_but_still_completes_with_the_rest():
@@ -114,7 +119,10 @@ def test_analyze_skips_a_failed_image_but_still_completes_with_the_rest():
     calls = mock_update.await_args_list
     assert calls[1].args[0] == analysis_id
     assert calls[1].args[1]["status"] == "completed"
-    assert calls[1].args[1]["bcsScore"] == fake_result.model_dump()
+    expected_fields = fake_result.model_dump()
+    expected_mean = expected_fields.pop("mean_bcs_score")
+    assert calls[1].args[1]["bcsScore"] == expected_fields
+    assert calls[1].args[1]["mean_bcs_score"] == expected_mean
     assert len(calls[1].args[1]["skippedImages"]) == 1
     assert "too-big" in calls[1].args[1]["skippedImages"][0]
 

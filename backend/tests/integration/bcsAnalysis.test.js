@@ -74,6 +74,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(res.status).toBe(201);
     expect(res.body.bcsAnalysis.status).toBe('not_started');
     expect(res.body.bcsAnalysis.bcsScore).toEqual({});
+    // root-level, sibling of bcsScore - not nested inside it
+    expect(res.body.bcsAnalysis.mean_bcs_score).toBe(null);
     expect(res.body.bcsAnalysis.createdBy).toBe(user._id.toString());
     expect(res.body.bcsAnalysis.is_approved).toBe(false);
 
@@ -195,14 +197,18 @@ describe('bcs-analysis upload + create + poll flow', () => {
   });
 
   describe('PATCH /api/bcs-analysis/:id/approve', () => {
-    it('sets is_approved to true on a completed analysis', async () => {
+    it('sets is_approved and selects the median as the final score', async () => {
       const cow = await Cow.create({ cowsId: '3124' });
       const analysis = await BcsAnalysis.create({
         cow: cow._id,
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
-        bcsScore: { mean_bcs_score: 3.25 },
+        mean_bcs_score: 3.25,
+        bcsScore: {
+          median_bcs_score: { score: 3.25, is_selected: false },
+          gemini: { final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false },
+        },
         createdBy: user._id,
         updatedBy: user._id,
       });
@@ -213,9 +219,43 @@ describe('bcs-analysis upload + create + poll flow', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.bcsAnalysis.is_approved).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.median_bcs_score).toEqual({ score: 3.25, is_selected: true });
+      // direct approval only picks the median - no provider gets selected
+      expect(res.body.bcsAnalysis.bcsScore.gemini.is_selected).toBe(false);
 
       const stored = await BcsAnalysis.findById(analysis._id);
       expect(stored.is_approved).toBe(true);
+      expect(stored.bcsScore.median_bcs_score.is_selected).toBe(true);
+    });
+
+    it('stamps updatedBy as the approving user (not whoever created the record) and bumps updatedAt', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'completed',
+        mean_bcs_score: 3.25,
+        createdBy: user._id, // the uploader
+        updatedBy: user._id,
+      });
+      const originalUpdatedAt = analysis.updatedAt;
+
+      const reviewer = await User.create({ email: 'reviewer@example.com', name: 'Reviewer', role: 'staff', status: 'active', passwordHash: 'x' });
+      await new Promise((r) => setTimeout(r, 10)); // ensure updatedAt would actually move if bumped
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/approve`)
+        .set('Authorization', `Bearer ${tokenFor(reviewer)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.bcsAnalysis.updatedBy).toBe(reviewer._id.toString());
+      expect(new Date(res.body.bcsAnalysis.updatedAt).getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.updatedBy.toString()).toBe(reviewer._id.toString());
+      expect(stored.createdBy.toString()).toBe(user._id.toString()); // untouched
+      expect(stored.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
     });
 
     it('rejects approving an analysis that has not completed yet', async () => {
@@ -248,16 +288,17 @@ describe('bcs-analysis upload + create + poll flow', () => {
   });
 
   describe('PATCH /api/bcs-analysis/:id/override', () => {
-    it('updates only mean_bcs_score on a completed analysis, keeping the per-provider breakdown', async () => {
+    it('replaces median_bcs_score.score, selects it, and leaves mean_bcs_score and the provider breakdown alone', async () => {
       const cow = await Cow.create({ cowsId: '3124' });
       const analysis = await BcsAnalysis.create({
         cow: cow._id,
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
+        mean_bcs_score: 3.25,
         bcsScore: {
-          mean_bcs_score: 3.25,
-          gemini: { final_bcs: 3.25, confidence: 'High', status: 'success' },
+          median_bcs_score: { score: 3.25, is_selected: false },
+          gemini: { final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false },
         },
         createdBy: user._id,
         updatedBy: user._id,
@@ -269,14 +310,48 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ score: 3.5 });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.bcsScore.mean_bcs_score).toBe(3.5);
-      expect(res.body.bcsAnalysis.bcsScore.gemini).toEqual({ final_bcs: 3.25, confidence: 'High', status: 'success' });
+      expect(res.body.bcsAnalysis.bcsScore.median_bcs_score).toEqual({ score: 3.5, is_selected: true });
+      // mean_bcs_score is the AI's own computed average, kept at the root of
+      // the document - a human override doesn't touch it
+      expect(res.body.bcsAnalysis.mean_bcs_score).toBe(3.25);
+      expect(res.body.bcsAnalysis.bcsScore.gemini).toEqual({ final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false });
       // overriding is itself a review decision - counts as approved too
       expect(res.body.bcsAnalysis.is_approved).toBe(true);
 
       const stored = await BcsAnalysis.findById(analysis._id);
-      expect(stored.bcsScore.mean_bcs_score).toBe(3.5);
+      expect(stored.bcsScore.median_bcs_score.score).toBe(3.5);
       expect(stored.is_approved).toBe(true);
+    });
+
+    it('stamps updatedBy as the overriding user (not whoever created the record) and bumps updatedAt', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'completed',
+        mean_bcs_score: 3.25,
+        createdBy: user._id, // the uploader
+        updatedBy: user._id,
+      });
+      const originalUpdatedAt = analysis.updatedAt;
+
+      const reviewer = await User.create({ email: 'reviewer2@example.com', name: 'Reviewer', role: 'staff', status: 'active', passwordHash: 'x' });
+      await new Promise((r) => setTimeout(r, 10)); // ensure updatedAt would actually move if bumped
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/override`)
+        .set('Authorization', `Bearer ${tokenFor(reviewer)}`)
+        .send({ score: 3.5 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.bcsAnalysis.updatedBy).toBe(reviewer._id.toString());
+      expect(new Date(res.body.bcsAnalysis.updatedAt).getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.updatedBy.toString()).toBe(reviewer._id.toString());
+      expect(stored.createdBy.toString()).toBe(user._id.toString()); // untouched
+      expect(stored.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
     });
 
     it('rounds an off-scale score to the nearest 0.25', async () => {
@@ -286,7 +361,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
-        bcsScore: { mean_bcs_score: 3.25 },
+        mean_bcs_score: 3.25,
+        bcsScore: { median_bcs_score: { score: 3.25, is_selected: false } },
         createdBy: user._id,
         updatedBy: user._id,
       });
@@ -297,7 +373,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ score: 3.4 });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.bcsScore.mean_bcs_score).toBe(3.5);
+      expect(res.body.bcsAnalysis.bcsScore.median_bcs_score.score).toBe(3.5);
     });
 
     it('rejects a score outside 1-5', async () => {
@@ -307,7 +383,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
         cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'completed',
-        bcsScore: { mean_bcs_score: 3.25 },
+        mean_bcs_score: 3.25,
         createdBy: user._id,
         updatedBy: user._id,
       });
@@ -344,6 +420,106 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .patch('/api/bcs-analysis/000000000000000000000000/override')
         .set('Authorization', `Bearer ${token}`)
         .send({ score: 3.5 });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PATCH /api/bcs-analysis/:id/select', () => {
+    function makeCompletedAnalysis(bcsScore) {
+      return async () => {
+        const cow = await Cow.create({ cowsId: '3124' });
+        return BcsAnalysis.create({
+          cow: cow._id,
+          cowsId: '3124',
+          cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+          status: 'completed',
+          bcsScore,
+          createdBy: user._id,
+          updatedBy: user._id,
+        });
+      };
+    }
+
+    it("selects a specific provider's score, deselecting the median and every other provider", async () => {
+      const analysis = await makeCompletedAnalysis({
+        median_bcs_score: { score: 3.25, is_selected: true }, // e.g. already approved once
+        gemini: { final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false },
+        claude: { final_bcs: 3.5, confidence: 'Medium', status: 'success', is_selected: false },
+      })();
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/select`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ provider: 'claude' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.bcsAnalysis.is_approved).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.claude.is_selected).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.median_bcs_score.is_selected).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.gemini.is_selected).toBe(false);
+      // the underlying scores themselves are untouched - only is_selected moved
+      expect(res.body.bcsAnalysis.bcsScore.claude.final_bcs).toBe(3.5);
+      expect(res.body.bcsAnalysis.bcsScore.median_bcs_score.score).toBe(3.25);
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.bcsScore.claude.is_selected).toBe(true);
+      expect(stored.bcsScore.median_bcs_score.is_selected).toBe(false);
+    });
+
+    it('rejects an unknown provider name', async () => {
+      const analysis = await makeCompletedAnalysis({
+        gemini: { final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false },
+      })();
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/select`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ provider: 'not-a-real-provider' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects selecting a provider that has no successful score', async () => {
+      const analysis = await makeCompletedAnalysis({
+        gemini: { final_bcs: 3.25, confidence: 'High', status: 'success', is_selected: false },
+        openai: { final_bcs: null, confidence: null, status: 'error', error_message: 'rate limit', is_selected: false },
+      })();
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/select`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ provider: 'openai' });
+
+      expect(res.status).toBe(400);
+
+      const stored = await BcsAnalysis.findById(analysis._id);
+      expect(stored.is_approved).toBe(false);
+    });
+
+    it('rejects selecting on an analysis that has not completed yet', async () => {
+      const cow = await Cow.create({ cowsId: '3124' });
+      const analysis = await BcsAnalysis.create({
+        cow: cow._id,
+        cowsId: '3124',
+        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        status: 'processing',
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/select`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ provider: 'gemini' });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 404 for an unknown id', async () => {
+      const res = await request(app)
+        .patch('/api/bcs-analysis/000000000000000000000000/select')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ provider: 'gemini' });
       expect(res.status).toBe(404);
     });
   });

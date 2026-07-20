@@ -1,4 +1,5 @@
 import asyncio
+import statistics
 
 from app.core.exceptions import LLMProviderError
 from app.core.logging import get_logger
@@ -103,5 +104,10 @@ async def assess_bcs(
     ]
     if successful_scores:
         response.mean_bcs_score = round(sum(successful_scores) / len(successful_scores) * 4) / 4
+        # statistics.median averages the two middle values for an even count,
+        # which can land off the quarter-point scale (e.g. 3.0/3.5 -> 3.25 is
+        # fine, but 3.0/3.25 -> 3.125 isn't) - round it the same way as the
+        # mean and every provider's own final_bcs.
+        response.median_bcs_score.score = round(statistics.median(successful_scores) * 4) / 4
 
     return response

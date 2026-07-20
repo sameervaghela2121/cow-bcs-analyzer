@@ -99,11 +99,11 @@ function groupByDate(analyses) {
   return groups;
 }
 
-// bcsScore.mean_bcs_score is the average of final_bcs across whichever
-// providers succeeded (computed server-side in ai-backend) - shown as the
-// single overall score rather than breaking it out per-provider.
-function MeanScore({ bcsScore }) {
-  const score = bcsScore?.mean_bcs_score;
+// mean_bcs_score is a root-level field on the analysis (a sibling of
+// bcsScore, not nested inside it) - the average of final_bcs across
+// whichever providers succeeded (computed server-side in ai-backend) -
+// shown as the single overall score rather than breaking it out per-provider.
+function MeanScore({ score }) {
   if (score == null) return null;
   const band = bandFor(score);
   return (
@@ -169,6 +169,7 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
         </div>
         {analysis.status === 'completed' && <MeanScore bcsScore={analysis.bcsScore} />}
       </div>
+      {analysis.status === 'completed' && <MeanScore score={analysis.mean_bcs_score} />}
     </div>
   );
 }

@@ -55,10 +55,10 @@ describe('CowDetailPage', () => {
               status: 'completed',
               createdAt: '2026-07-10T00:00:00Z',
               imageUrls: ['https://storage.googleapis.com/a2-img1.jpg'],
+              mean_bcs_score: 3.25,
               bcsScore: {
                 gemini: { final_bcs: 3.25, confidence: 'High', status: 'success' },
                 claude: { final_bcs: 3.0, confidence: 'Medium', status: 'success' },
-                mean_bcs_score: 3.25,
               },
             },
             {
@@ -66,7 +66,8 @@ describe('CowDetailPage', () => {
               status: 'completed',
               createdAt: '2026-07-01T00:00:00Z',
               imageUrls: ['https://storage.googleapis.com/a1-img1.jpg'],
-              bcsScore: { gemini: { final_bcs: 3.0, confidence: 'Medium', status: 'success' }, mean_bcs_score: 3.0 },
+              mean_bcs_score: 3.0,
+              bcsScore: { gemini: { final_bcs: 3.0, confidence: 'Medium', status: 'success' } },
             },
           ],
           total: 2,
@@ -107,7 +108,8 @@ describe('CowDetailPage', () => {
             id: 'a3',
             status: done ? 'completed' : 'processing',
             imageUrls: [],
-            bcsScore: done ? { gemini: { final_bcs: 3.5, confidence: 'High', status: 'success' }, mean_bcs_score: 3.5 } : {},
+            mean_bcs_score: done ? 3.5 : null,
+            bcsScore: done ? { gemini: { final_bcs: 3.5, confidence: 'High', status: 'success' } } : {},
           },
         });
       })

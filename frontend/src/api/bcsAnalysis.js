@@ -14,6 +14,9 @@ export const bcsAnalysisApi = {
 
   approve: (id) => apiClient.patch(`/bcs-analysis/${id}/approve`).then((r) => r.data.bcsAnalysis),
 
+  selectProvider: (id, provider) =>
+    apiClient.patch(`/bcs-analysis/${id}/select`, { provider }).then((r) => r.data.bcsAnalysis),
+
   override: (id, score) => apiClient.patch(`/bcs-analysis/${id}/override`, { score }).then((r) => r.data.bcsAnalysis),
 };
 

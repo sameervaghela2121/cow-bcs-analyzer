@@ -145,15 +145,18 @@ Response (`MultiModelBCSResponse`) — identical shape to what gets stored as
 
 ```json
 {
-  "claude":  { "recommendation": "...", "final_bcs": 3.25, "confidence": "High", "status": "success", "error_message": null },
-  "gemini":  { "recommendation": "...", "final_bcs": 3.5,  "confidence": "High", "status": "success", "error_message": null },
-  "openai":  { "recommendation": null,  "final_bcs": null, "confidence": null,  "status": "error",   "error_message": "rate limit exceeded" },
-  "mean_bcs_score": 3.25
+  "claude":  { "recommendation": "...", "final_bcs": 3.25, "confidence": "High", "status": "success", "error_message": null, "is_selected": false },
+  "gemini":  { "recommendation": "...", "final_bcs": 3.5,  "confidence": "High", "status": "success", "error_message": null, "is_selected": false },
+  "openai":  { "recommendation": null,  "final_bcs": null, "confidence": null,  "status": "error",   "error_message": "rate limit exceeded", "is_selected": false },
+  "mean_bcs_score": 3.25,
+  "median_bcs_score": { "score": 3.25, "is_selected": false }
 }
 ```
 
 - Each provider is a top-level key with its own assessment embedded — `status: "error"` for a provider that failed, with no `final_bcs`/`confidence`.
 - **`mean_bcs_score`** is the average `final_bcs` across only the providers that actually succeeded, divided by however many that was (1, 2, or 3 — never a fixed count), rounded to the nearest 0.25 to match every other BCS score in the system. `None` only if every provider failed, in which case the endpoint itself returns `502` (`LLMProviderError`) instead.
+- **`median_bcs_score.score`** is the median of the same successful providers' `final_bcs`, rounded to the nearest 0.25 the same way.
+- **`is_selected`** (on every provider *and* on `median_bcs_score`) is always `false` coming out of this endpoint — it exists for a reviewer to flip later, marking which one of mean/median/a specific provider's score was picked as the final value for that analysis. Not written anywhere by this service itself.
 
 ## Environment variables
 
