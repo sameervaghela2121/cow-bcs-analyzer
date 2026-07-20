@@ -1,0 +1,59 @@
+name: Deploy Image Compressor
+
+# Own manual button in the Actions tab, and reusable so deploy-all.yml can
+# call it too. Unlike backend/frontend/ai-backend, this doesn't build a
+# Docker image - Gen2 Cloud Functions build from source directly, so the
+# deploy step just points gcloud at the image-compressor/ directory.
+on:
+  workflow_dispatch: {}
+  workflow_call: {}
+
+env:
+  REGION: us-central1
+  PROJECT: sameerv
+
+permissions:
+  contents: read
+  id-token: write # required for Workload Identity Federation
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Cloud Function (gen2)
+        working-directory: image-compressor
+        run: |
+          gcloud functions deploy bcs-image-compressor \
+            --gen2 \
+            --project=${{ env.PROJECT }} \
+            --region=${{ env.REGION }} \
+            --runtime=nodejs20 \
+            --source=. \
+            --entry-point=compressImage \
+            --trigger-http \
+            --no-allow-unauthenticated \
+            --service-account=bcs-image-compressor@${{ env.PROJECT }}.iam.gserviceaccount.com \
+            --memory=512Mi \
+            --timeout=60s \
+            --max-instances=5 \
+            --set-env-vars=NODE_ENV=production
+
+      - name: Grant bcs-backend invoke permission
+        # Idempotent - re-running this on every deploy is a no-op once the
+        # binding already exists, and guards against it ever being dropped
+        # (e.g. the function being deleted and recreated).
+        run: |
+          gcloud functions add-invoker-policy-binding bcs-image-compressor \
+            --gen2 \
+            --project=${{ env.PROJECT }} \
+            --region=${{ env.REGION }} \
+            --member="serviceAccount:bcs-backend-uploader@${{ env.PROJECT }}.iam.gserviceaccount.com"

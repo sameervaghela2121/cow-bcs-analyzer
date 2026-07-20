@@ -10,6 +10,9 @@ const {
   generateUploadUrl,
   generateReadUrl,
 } = require('../services/gcsService');
+const { triggerCompression } = require('../services/imageCompressorClient');
+const { buildVariantObjectPath } = require('../../../image-compressor/src/paths');
+const { THUMBNAIL, DISPLAY } = require('../../../image-compressor/src/config');
 const config = require('../config/env');
 
 const SAFE_ID_OR_FILENAME = /^[A-Za-z0-9._-]{1,128}$/;
@@ -41,16 +44,34 @@ function isOwnedImageUri(uri, cowsId) {
 
 // Short-lived signed GET URLs so the frontend can render the images directly
 // (cowsImages itself is just gs:// object paths, not browser-fetchable).
+// thumbnailUrls/displayUrls point at compressed variants the image-compressor
+// writes alongside each original - their paths are derived here, not stored,
+// the same way imageUrls always has been. Signing doesn't check existence, so
+// these resolve even if compression hasn't finished yet (or failed); the
+// frontend falls back to imageUrls (the original) on a 404.
 async function serializeBcsAnalysis(doc) {
-  const imageUrls = await Promise.all(
-    doc.cowsImages.map((uri) => generateReadUrl({ objectPath: fromGsUri(uri).objectPath }))
-  );
+  const objectPaths = doc.cowsImages.map((uri) => fromGsUri(uri).objectPath);
+  const [imageUrls, thumbnailUrls, displayUrls] = await Promise.all([
+    Promise.all(objectPaths.map((objectPath) => generateReadUrl({ objectPath }))),
+    Promise.all(
+      objectPaths.map((objectPath) =>
+        generateReadUrl({ objectPath: buildVariantObjectPath(objectPath, THUMBNAIL.name) })
+      )
+    ),
+    Promise.all(
+      objectPaths.map((objectPath) =>
+        generateReadUrl({ objectPath: buildVariantObjectPath(objectPath, DISPLAY.name) })
+      )
+    ),
+  ]);
   return {
     id: doc._id.toString(),
     cow: doc.cow.toString(),
     cowsId: doc.cowsId,
     cowsImages: doc.cowsImages,
     imageUrls,
+    thumbnailUrls,
+    displayUrls,
     bcsScore: doc.bcsScore,
     status: doc.status,
     errorMessage: doc.errorMessage,
@@ -114,6 +135,20 @@ async function create(req, res, next) {
     }
 
     const analysis = await createAnalysis({ cowsId, cowsImages, userId: req.user.id });
+
+    // Compressed thumbnail/display variants are a display-only optimization -
+    // a failure here must never block record creation or AI analysis, which
+    // both continue to work off the original, full-quality image.
+    await Promise.all(
+      cowsImages.map(async (uri) => {
+        try {
+          await triggerCompression({ bucketName: config.gcs.bucketName, objectPath: fromGsUri(uri).objectPath });
+        } catch (compressionErr) {
+          console.error(`image-compressor failed for ${uri}:`, compressionErr);
+        }
+      })
+    );
+
     res.status(201).json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
   } catch (err) {
     next(err);

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -188,6 +188,74 @@ describe('CowDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByText('1 / 3')).not.toBeInTheDocument();
     expect(screen.queryByText('3 / 3')).not.toBeInTheDocument();
+  });
+
+  it('groups upload history cards by day, with same-day records sharing one row', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/cows/4417', () => HttpResponse.json({ cow: { id: 'c1', cowsId: '4417' } })),
+      http.get('http://localhost:4000/api/cows/4417/analyses', () =>
+        HttpResponse.json({
+          bcsAnalyses: [
+            { id: 'a3', status: 'completed', createdAt: '2026-07-16T15:00:00Z', imageUrls: ['https://storage.googleapis.com/a3.jpg'], bcsScore: { mean_bcs_score: 3.0 } },
+            { id: 'a2', status: 'completed', createdAt: '2026-07-16T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a2.jpg'], bcsScore: { mean_bcs_score: 3.25 } },
+            { id: 'a1', status: 'completed', createdAt: '2026-07-10T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a1.jpg'], bcsScore: { mean_bcs_score: 2.75 } },
+          ],
+          total: 3,
+        })
+      )
+    );
+    renderDetail();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+
+    // One date heading per distinct day, not one per record - the two Jul 16
+    // records share a single heading and sit in the same row.
+    expect(screen.getByText('Jul 16, 2026')).toBeInTheDocument();
+    expect(screen.getByText('Jul 10, 2026')).toBeInTheDocument();
+
+    // All three cards still render, each independently clickable.
+    expect(screen.getAllByRole('button', { name: /view 1 photo/i })).toHaveLength(3);
+  });
+
+  it('prefers the 600X600 display variant for the card cover (sharper than upscaling the 300X300 thumbnail), falling back to the original on error', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/cows/4417', () => HttpResponse.json({ cow: { id: 'c1', cowsId: '4417' } })),
+      http.get('http://localhost:4000/api/cows/4417/analyses', () =>
+        HttpResponse.json({
+          bcsAnalyses: [
+            {
+              id: 'a1',
+              status: 'completed',
+              createdAt: '2026-07-10T00:00:00Z',
+              imageUrls: ['https://storage.googleapis.com/original.jpg'],
+              thumbnailUrls: ['https://storage.googleapis.com/300X300/thumb.jpg'],
+              displayUrls: ['https://storage.googleapis.com/600X600/display.jpg'],
+              bcsScore: { mean_bcs_score: 3.25 },
+            },
+          ],
+          total: 1,
+        })
+      )
+    );
+    const { container } = renderDetail();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+
+    // Cover uses the compressed 600X600 display variant, not the original.
+    const coverImg = container.querySelector('img');
+    expect(coverImg).toHaveAttribute('src', 'https://storage.googleapis.com/600X600/display.jpg');
+
+    // A load failure on the variant falls back to the original.
+    fireEvent.error(coverImg);
+    expect(coverImg).toHaveAttribute('src', 'https://storage.googleapis.com/original.jpg');
+
+    await userEvent.click(screen.getByRole('button', { name: 'View 1 photo' }));
+
+    // Lightbox uses the compressed 600X600 display variant, not the original.
+    const lightboxImg = [...container.querySelectorAll('img')].at(-1);
+    expect(lightboxImg).toHaveAttribute('src', 'https://storage.googleapis.com/600X600/display.jpg');
+
+    // A load failure on the display variant falls back to the original.
+    fireEvent.error(lightboxImg);
+    expect(lightboxImg).toHaveAttribute('src', 'https://storage.googleapis.com/original.jpg');
   });
 
   it('back goes to wherever the user actually came from, not always /herd', async () => {

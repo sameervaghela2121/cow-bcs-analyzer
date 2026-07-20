@@ -7,8 +7,13 @@ jest.mock('../../src/services/gcsService', () => {
   };
 });
 
+jest.mock('../../src/services/imageCompressorClient', () => ({
+  triggerCompression: jest.fn().mockResolvedValue(undefined),
+}));
+
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
+const { triggerCompression } = require('../../src/services/imageCompressorClient');
 const { createApp } = require('../../src/app');
 const { connect, clearDatabase, closeDatabase } = require('../setup');
 const User = require('../../src/models/User');
@@ -76,6 +81,41 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(stored).toBeTruthy();
     expect(stored.cow).toBeTruthy();
     expect(stored.is_approved).toBe(false);
+  });
+
+  it('returns signed thumbnailUrls and displayUrls alongside imageUrls', async () => {
+    const res = await request(app)
+      .post('/api/bcs-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.bcsAnalysis.imageUrls).toEqual(['https://storage.googleapis.com/signed-get-url']);
+    expect(res.body.bcsAnalysis.thumbnailUrls).toEqual(['https://storage.googleapis.com/signed-get-url']);
+    expect(res.body.bcsAnalysis.displayUrls).toEqual(['https://storage.googleapis.com/signed-get-url']);
+  });
+
+  it('triggers image compression once per uploaded image after creating the record', async () => {
+    const objectPath = '3124/2026-07-16T00-00-00-000Z/a.jpg';
+    await request(app)
+      .post('/api/bcs-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/${objectPath}`] });
+
+    expect(triggerCompression).toHaveBeenCalledTimes(1);
+    expect(triggerCompression).toHaveBeenCalledWith({ bucketName: config.gcs.bucketName, objectPath });
+  });
+
+  it('still creates the record and responds 201 even if compression fails', async () => {
+    triggerCompression.mockRejectedValueOnce(new Error('sharp blew up'));
+
+    const res = await request(app)
+      .post('/api/bcs-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.bcsAnalysis.status).toBe('not_started');
   });
 
   it('rejects creation with a non gs:// image entry', async () => {

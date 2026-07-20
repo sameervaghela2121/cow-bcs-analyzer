@@ -1,8 +1,8 @@
-name: Deploy All (Cloud Run)
+name: Deploy All
 
 # Auto-deploys on every push to main, but only the service(s) whose files
 # actually changed. The manual "Run workflow" button skips that check and
-# always deploys all three - the "deploy everything" option.
+# always deploys all four - the "deploy everything" option.
 on:
   push:
     branches: [main]
@@ -26,6 +26,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       ai-backend: ${{ steps.filter.outputs.ai-backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      image-compressor: ${{ steps.filter.outputs.image-compressor }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -38,6 +39,8 @@ jobs:
               - 'ai-backend/**'
             frontend:
               - 'frontend/**'
+            image-compressor:
+              - 'image-compressor/**'
 
   deploy-backend:
     needs: changes
@@ -55,4 +58,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/deploy-frontend.yml
+    secrets: inherit
+
+  deploy-image-compressor:
+    needs: changes
+    if: needs.changes.outputs.image-compressor == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/deploy-image-compressor.yml
     secrets: inherit
