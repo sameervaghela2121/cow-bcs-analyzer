@@ -112,13 +112,10 @@ async def _run_analysis(analysis_id: ObjectId, image_uris: list[str]) -> None:
             raise InvalidImageError(f"All {len(image_uris)} image(s) failed to download: {failures}")
 
         result = await assess_bcs(images=payloads)
-        # mean_bcs_score lives at the root of the bcs_analysis document itself
-        # (a sibling of bcsScore/status/is_approved), not inside bcsScore -
-        # that's where it lived before median/per-provider selection existed,
-        # and nothing about reviewing a record should move it.
-        result_fields = result.model_dump()
-        mean_bcs_score = result_fields.pop("mean_bcs_score")
-        update_fields = {"status": "completed", "bcsScore": result_fields, "mean_bcs_score": mean_bcs_score}
+        # The whole result (providers + is_mean_true/is_median_true/
+        # is_critical) lands as-is under bcsScore - no mean/median value to
+        # pull out to the document root anymore, since none is computed here.
+        update_fields = {"status": "completed", "bcsScore": result.model_dump()}
         if failures:
             update_fields["skippedImages"] = failures
         await update_bcs_analysis(analysis_id, update_fields)

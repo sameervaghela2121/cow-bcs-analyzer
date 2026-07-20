@@ -12,34 +12,42 @@ const {
 } = require('../services/gcsService');
 const { triggerCompression } = require('../services/imageCompressorClient');
 const { THUMBNAIL, DISPLAY, buildVariantObjectPath } = require('../services/imageVariants');
+const { snapshotBcsAnalysis, recordAuditEntry } = require('../services/auditService');
+const { PROVIDERS, roundQuarter, successfulScores, meanOfScores, medianOfScores } = require('../services/bcsScoring');
 const config = require('../config/env');
 
 const SAFE_ID_OR_FILENAME = /^[A-Za-z0-9._-]{1,128}$/;
 const ALLOWED_IMAGE_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
-// BCS scores are always quarter-point increments everywhere else in this
-// system (ai-backend rounds every provider's final_bcs and the mean the
-// same way) - a manual override must land on the same scale.
-function roundQuarter(n) {
-  return Math.round(n * 4) / 4;
+const SELECTABLE_SOURCES = [...PROVIDERS, 'mean', 'median'];
+
+// The value each of the 5 selectable candidates currently holds - null for
+// a provider that never returned a successful score. Mean/median are
+// computed fresh here (never stored), same helpers the serializer uses.
+function candidateValues(bcsScore) {
+  const scores = successfulScores(bcsScore);
+  const values = { mean: meanOfScores(scores), median: medianOfScores(scores) };
+  for (const p of PROVIDERS) {
+    values[p] = bcsScore?.[p]?.status === 'success' ? bcsScore[p].final_bcs : null;
+  }
+  return values;
 }
 
-const SELECTABLE_PROVIDERS = ['claude', 'gemini', 'openai'];
-
-// Exactly one of median_bcs_score / claude / gemini / openai is ever the
-// "selected" final score for an analysis - clear every is_selected flag
-// before setting the one the reviewer just picked, so switching their pick
-// (median -> a provider, or vice versa) never leaves two flags true at once.
-function clearSelections(bcsScore) {
+// Sets every candidate's is_true flag based on whether its value exactly
+// equals `matchValue` (already quarter-rounded on both sides, so exact ===
+// is safe) - so a single pick can mark several candidates true at once
+// purely because they happen to agree. `matchValue: null` (Override) always
+// clears every flag to false, since a manually typed value isn't matched
+// against anything.
+function applySelection(bcsScore, values, matchValue) {
   const next = { ...(bcsScore || {}) };
-  if (next.median_bcs_score) {
-    next.median_bcs_score = { ...next.median_bcs_score, is_selected: false };
-  }
-  for (const name of SELECTABLE_PROVIDERS) {
-    if (next[name]) {
-      next[name] = { ...next[name], is_selected: false };
+  for (const p of PROVIDERS) {
+    if (next[p]) {
+      next[p] = { ...next[p], is_true: matchValue != null && values[p] === matchValue };
     }
   }
+  next.is_mean_true = matchValue != null && values.mean === matchValue;
+  next.is_median_true = matchValue != null && values.median === matchValue;
   return next;
 }
 
@@ -82,6 +90,10 @@ async function serializeBcsAnalysis(doc) {
       )
     ),
   ]);
+  // meanScore/medianScore are computed fresh on every read, never stored -
+  // a pure function of whichever providers succeeded, so there's nothing
+  // here that can drift from the raw scores it's derived from.
+  const scores = successfulScores(doc.bcsScore);
   return {
     id: doc._id.toString(),
     cow: doc.cow.toString(),
@@ -91,7 +103,9 @@ async function serializeBcsAnalysis(doc) {
     thumbnailUrls,
     displayUrls,
     bcsScore: doc.bcsScore,
-    mean_bcs_score: doc.mean_bcs_score,
+    meanScore: meanOfScores(scores),
+    medianScore: medianOfScores(scores),
+    final_bcs: doc.final_bcs,
     status: doc.status,
     errorMessage: doc.errorMessage,
     is_approved: doc.is_approved,
@@ -188,43 +202,24 @@ async function getOne(req, res, next) {
   }
 }
 
-async function approve(req, res, next) {
+// Reviewer clicks exactly one of the 5 candidates (3 providers + computed
+// mean + computed median). Every candidate whose value exactly matches that
+// pick is marked is_true too - so picking Median, which happens to equal
+// Gemini's own score, marks both true in one click. final_bcs becomes the
+// clicked value directly; no combining math ever runs across differing
+// values (there's nothing to select if they disagree - that's what Override
+// is for). This also covers what used to be a separate Approve action:
+// clicking Median (auto-matching any provider that agrees with it) and
+// saving is a strict superset of "accept the median as-is."
+async function selectScore(req, res, next) {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(404).json({ error: 'BCS analysis record not found.' });
     }
-    const analysis = await BcsAnalysis.findById(id);
-    if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
-    if (analysis.status !== 'completed') {
-      return res.status(409).json({ error: 'Only a completed analysis can be approved.' });
-    }
-
-    // Direct approval (no provider checkbox picked) means accepting the
-    // median as the final score.
-    const bcsScore = clearSelections(analysis.bcsScore);
-    bcsScore.median_bcs_score = { ...bcsScore.median_bcs_score, is_selected: true };
-    analysis.bcsScore = bcsScore;
-    analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
-    analysis.is_approved = true;
-    analysis.updatedBy = req.user.id;
-    await analysis.save();
-
-    res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-async function selectProviderScore(req, res, next) {
-  try {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(404).json({ error: 'BCS analysis record not found.' });
-    }
-    const { provider } = req.body;
-    if (!SELECTABLE_PROVIDERS.includes(provider)) {
-      return res.status(400).json({ error: `provider must be one of: ${SELECTABLE_PROVIDERS.join(', ')}.` });
+    const { source } = req.body;
+    if (!SELECTABLE_SOURCES.includes(source)) {
+      return res.status(400).json({ error: `source must be one of: ${SELECTABLE_SOURCES.join(', ')}.` });
     }
 
     const analysis = await BcsAnalysis.findById(id);
@@ -232,20 +227,31 @@ async function selectProviderScore(req, res, next) {
     if (analysis.status !== 'completed') {
       return res.status(409).json({ error: 'Only a completed analysis can be reviewed.' });
     }
-    const providerScore = analysis.bcsScore?.[provider];
-    if (!providerScore || providerScore.status !== 'success' || providerScore.final_bcs == null) {
-      return res.status(400).json({ error: `'${provider}' has no successful score to select.` });
+
+    const values = candidateValues(analysis.bcsScore);
+    const clickedValue = values[source];
+    if (clickedValue == null) {
+      return res.status(400).json({ error: `'${source}' has no successful score to select.` });
     }
 
-    // Checking a provider's checkbox means using *that* model's score as
-    // the final one instead of the median.
-    const bcsScore = clearSelections(analysis.bcsScore);
-    bcsScore[provider] = { ...bcsScore[provider], is_selected: true };
-    analysis.bcsScore = bcsScore;
-    analysis.markModified('bcsScore');
+    const before = snapshotBcsAnalysis(analysis);
+
+    analysis.bcsScore = applySelection(analysis.bcsScore, values, clickedValue);
+    analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
+    analysis.final_bcs = clickedValue;
     analysis.is_approved = true;
     analysis.updatedBy = req.user.id;
     await analysis.save();
+    const after = snapshotBcsAnalysis(analysis);
+
+    // Audit trail write is best-effort, same fault-tolerance philosophy as
+    // image compression - a logging failure must never undo or block a
+    // review decision that has already persisted successfully.
+    try {
+      await recordAuditEntry({ analysis, action: 'provider_selected', before, after, performedBy: req.user.id });
+    } catch (auditErr) {
+      console.error(`audit log write failed for bcs_analysis ${analysis._id} (select):`, auditErr);
+    }
 
     res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
   } catch (err) {
@@ -270,21 +276,28 @@ async function override(req, res, next) {
       return res.status(409).json({ error: 'Only a completed analysis can be overridden.' });
     }
 
-    // A manual override replaces median_bcs_score.score with the reviewer's
-    // own value - the per-provider breakdown (claude/gemini/openai) already
-    // recorded stays intact for audit purposes, and mean_bcs_score is left
-    // untouched too (it's the AI's own computed average, not something a
-    // human override should silently rewrite).
-    const bcsScore = clearSelections(analysis.bcsScore);
-    bcsScore.median_bcs_score = { score: roundQuarter(score), is_selected: true };
-    analysis.bcsScore = bcsScore;
+    const before = snapshotBcsAnalysis(analysis);
+
+    // A manual override is a fully custom value, typed by the reviewer, not
+    // computed from anything - it isn't matched against the candidates at
+    // all, so every flag clears to false (matchValue: null short-circuits
+    // applySelection's comparisons).
+    analysis.bcsScore = applySelection(analysis.bcsScore, {}, null);
     analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
+    analysis.final_bcs = roundQuarter(score);
     // Overriding is itself a review decision - a reviewer picking the value
-    // by hand is at least as final as approving the median as-is, so this
-    // counts as reviewed too and drops off the review list the same way.
+    // by hand is at least as final as accepting a matched candidate, so
+    // this counts as reviewed too and drops off the review list the same way.
     analysis.is_approved = true;
     analysis.updatedBy = req.user.id;
     await analysis.save();
+    const after = snapshotBcsAnalysis(analysis);
+
+    try {
+      await recordAuditEntry({ analysis, action: 'overridden', before, after, performedBy: req.user.id });
+    } catch (auditErr) {
+      console.error(`audit log write failed for bcs_analysis ${analysis._id} (override):`, auditErr);
+    }
 
     res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
   } catch (err) {
@@ -292,4 +305,4 @@ async function override(req, res, next) {
   }
 }
 
-module.exports = { generateUploadUrls, create, getOne, approve, selectProviderScore, override, serializeBcsAnalysis };
+module.exports = { generateUploadUrls, create, getOne, selectScore, override, serializeBcsAnalysis };

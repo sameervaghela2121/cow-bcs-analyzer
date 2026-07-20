@@ -7,6 +7,7 @@ import CowDetailPage from './pages/CowDetailPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import ReviewPage from './pages/ReviewPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
+import AuditDetailPage from './pages/AuditDetailPage.jsx';
 import UsersPage from './pages/UsersPage.jsx';
 import AppShell from './components/AppShell.jsx';
 import RequireAuth from './auth/RequireAuth.jsx';
@@ -19,15 +20,16 @@ export default function App() {
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/herd" element={<HerdPage />} />
           <Route path="/herd/:cowsId" element={<CowDetailPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/audit/:id" element={<AuditDetailPage />} />
           <Route element={<RequireRole role="admin" />}>
-            <Route path="/users" element={<UsersPage />} />
+          <Route path="/users" element={<UsersPage />} />
           </Route>
         </Route>
       </Route>

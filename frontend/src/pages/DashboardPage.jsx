@@ -83,14 +83,13 @@ function TrendChart({ trend }) {
   );
 }
 
-// Bars are how many times each source ended up as the reviewer's final
-// pick, out of every analysis reviewed so far - a trust signal, not an avg
-// score or an API uptime number. "AI Median"/"AI Mean"/"Manual Override" are
-// reviewerAgreementStats' 3-way split of median_bcs_score picks: did the
-// reviewer accept the AI's median as-is, did their override happen to match
-// the AI's mean instead, or did they type in something that matches neither.
-function ProviderChart({ agreement }) {
-  const reviewedCount = agreement.reduce((sum, a) => sum + a.count, 0);
+// Bars are how many times each source ended up as (one of) the reviewer's
+// matched candidates, out of every analysis reviewed so far - a trust
+// signal, not an avg score or an API uptime number. A single review can
+// land in more than one bar at once (e.g. Median picked, and Claude happened
+// to agree with it) - reviewedCount is passed in explicitly rather than
+// summed from the bars, since that sum can now exceed the true total.
+function ProviderChart({ agreement, reviewedCount }) {
   const data = agreement.map((a) => ({ ...a, label: PROVIDER_LABEL[a.key] }));
   return (
     <div style={card}>
@@ -115,20 +114,18 @@ function ProviderChart({ agreement }) {
         </ResponsiveContainer>
       )}
       <div style={{ fontSize: 11, color: '#9a9280', marginTop: 10, lineHeight: 1.4 }}>
-        How often a human reviewer's final pick landed on each source. When the pick was the median field,
-        it's split by what that value actually matches: "AI Median" (accepted as-is), "AI Mean" (an override
-        that happens to equal the average), or "Manual Override" (a typed-in number matching neither).
       </div>
     </div>
   );
 }
 
-// Different question than ProviderChart: not "which button did the reviewer
-// click" but "whose number is actually the record's final score" - a direct
-// pick counts immediately, and an accepted/overridden median counts toward
-// whichever single provider its value matches (see modelInfluenceStats).
-function ModelInfluenceChart({ influence }) {
-  const reviewedCount = influence.reduce((sum, i) => sum + i.count, 0);
+// Different question than ProviderChart: not "which candidates matched the
+// reviewer's pick" but "whose number is actually the record's final score" -
+// a direct pick counts immediately, and an accepted median/mean/override
+// counts toward whichever single provider its value happens to match (see
+// modelInfluenceStats). reviewedCount is passed in explicitly rather than
+// summed, for the same reason as ProviderChart above.
+function ModelInfluenceChart({ influence, reviewedCount }) {
   const data = influence.map((i) => ({ ...i, label: PROVIDER_LABEL[i.key] }));
   return (
     <div style={card}>
@@ -153,9 +150,6 @@ function ModelInfluenceChart({ influence }) {
         </ResponsiveContainer>
       )}
       <div style={{ fontSize: 11, color: '#9a9280', marginTop: 10, lineHeight: 1.4 }}>
-        Whose number the final score actually equals, regardless of how the reviewer got there - a direct
-        pick, or an accepted/overridden median that happens to match one provider's own score. "Unattributed"
-        means the final value is a genuine blend (or a typed-in number) matching no single provider.
       </div>
     </div>
   );
@@ -260,6 +254,7 @@ export default function DashboardPage() {
   const pipelineCounts = useMemo(() => pipelineStatusCounts(allAnalyses), [allAnalyses]);
   const agreement = useMemo(() => reviewerAgreementStats(allAnalyses), [allAnalyses]);
   const influence = useMemo(() => modelInfluenceStats(allAnalyses), [allAnalyses]);
+  const reviewedCount = useMemo(() => allAnalyses.filter((a) => a.is_approved).length, [allAnalyses]);
   const trend = useMemo(() => scoreTrend(allAnalyses), [allAnalyses]);
   const attention = useMemo(() => cowsNeedingAttention(cows, latestByCow), [cows, latestByCow]);
   const volatility = useMemo(() => scoreVolatility(cows, allAnalyses), [cows, allAnalyses]);
@@ -288,8 +283,8 @@ export default function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px,1fr))', gap: 16 }}>
         <DistributionChart distribution={distribution} />
         <TrendChart trend={trend} />
-        <ProviderChart agreement={agreement} />
-        <ModelInfluenceChart influence={influence} />
+        <ProviderChart agreement={agreement} reviewedCount={reviewedCount} />
+        <ModelInfluenceChart influence={influence} reviewedCount={reviewedCount} />
         <PipelineChart counts={pipelineCounts} />
         <AttentionList items={attention} navigate={navigate} />
         <VolatilityList items={volatility} navigate={navigate} />

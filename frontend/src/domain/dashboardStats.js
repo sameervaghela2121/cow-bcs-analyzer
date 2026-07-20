@@ -1,26 +1,17 @@
-import { bandFor } from './bcs.js';
+import { bandFor, PROVIDERS, medianOfScores } from './bcs.js';
 
-const PROVIDERS = ['claude', 'gemini', 'openai'];
-
-// The single "best current score" for an analysis. A reviewer's pick
-// (median/claude/gemini/openai's is_selected) always wins once one exists;
-// before that, fall back to the AI's own best estimate. bcs_analysis
-// documents in the wild aren't all one shape - older records only ever had
-// bcsScore.mean_bcs_score, newer ones moved mean_bcs_score to the document
-// root and added median_bcs_score - so every fallback here is load-bearing,
-// not defensive-for-its-own-sake.
+// The single "best current score" for an analysis. Once reviewed,
+// analysis.final_bcs is always it (server-set, never re-derived here) -
+// before that, a live preview of the same median the Review page shows,
+// computed fresh from whichever providers succeeded.
 export function effectiveScore(analysis) {
+  if (analysis?.final_bcs != null) return analysis.final_bcs;
   const bcsScore = analysis?.bcsScore || {};
-  if (bcsScore.median_bcs_score?.is_selected) return bcsScore.median_bcs_score.score;
-  for (const provider of PROVIDERS) {
-    if (bcsScore[provider]?.is_selected) return bcsScore[provider].final_bcs;
-  }
-  return (
-    analysis?.mean_bcs_score ??
-    bcsScore.median_bcs_score?.score ??
-    bcsScore.mean_bcs_score ??
-    null
-  );
+  const scores = PROVIDERS
+    .map((provider) => bcsScore[provider])
+    .filter((assessment) => assessment?.status === 'success' && assessment?.final_bcs != null)
+    .map((assessment) => assessment.final_bcs);
+  return medianOfScores(scores);
 }
 
 // Analyses arrive per-cow, newest first, from cowsApi.analyses() - this
@@ -57,70 +48,27 @@ export function pipelineStatusCounts(allAnalyses) {
   return counts;
 }
 
-function roundQuarter(n) {
-  return Math.round(n * 4) / 4;
-}
-
-function median(numbers) {
-  const sorted = [...numbers].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
-const CLOSE_ENOUGH = 0.01; // both sides are quarter-point values; guards only against float noise
-
-// Reconstructs the AI's *original* median_bcs_score.score from the
-// per-provider final_bcs values - those fields are never touched by any
-// review action (approve/select/override only ever change
-// bcsScore.median_bcs_score.score and the various is_selected flags), so
-// this reproduces the original median even on a record a reviewer has since
-// overridden. Mirrors ai-backend's own computation exactly: statistics.median
-// over whichever providers succeeded, rounded to the nearest quarter point
-// (ai-backend/app/services/bcs_service.py).
-function aiComputedMedian(analysis) {
-  const bcsScore = analysis?.bcsScore || {};
-  const successfulScores = PROVIDERS
-    .map((provider) => bcsScore[provider])
-    .filter((assessment) => assessment?.status === 'success' && assessment?.final_bcs != null)
-    .map((assessment) => assessment.final_bcs);
-  return successfulScores.length > 0 ? roundQuarter(median(successfulScores)) : null;
-}
-
 // How often a reviewer's final pick actually lands on each candidate, among
-// analyses that have been reviewed so far - a trust signal ("which source do
-// reviewers keep agreeing with"), not whether the API call itself came back
-// with a score.
-//
-// Approve and override both flip bcsScore.median_bcs_score.is_selected the
-// same way, so a plain is_selected check can't tell "reviewer accepted the
-// AI's median as-is" from "reviewer typed in their own number" - lumping
-// those together would make a real override look like the median performing
-// well. Instead, whenever median_bcs_score is the pick, its *current* score
-// is compared against the AI's original median (reconstructed via
-// aiComputedMedian, since override overwrites the field in place) and
-// against the AI's mean (mean_bcs_score, which override never touches):
-//   - matches the recomputed median -> reviewer accepted the AI's median as-is
-//   - matches the mean instead      -> an override that happens to agree
-//     with the AI's average - real evidence the mean was the right call,
-//     credited to 'mean' rather than miscounted as a median win
-//   - matches neither                -> a genuine manual override, its own
-//     bucket rather than folded into 'median'
+// analyses reviewed so far - a trust signal ("which source do reviewers
+// keep agreeing with"). Reads bcsScore's is_true/is_mean_true/is_median_true
+// flags directly - the backend already resolved exactly which candidates
+// matched the picked value (see bcsAnalysisController.applySelection), so
+// there's no reconstruction or float-comparison needed here anymore. A
+// single pick can land in more than one bucket at once (e.g. Median picked,
+// and Claude happened to agree) - both get credit, so rates can sum past 100%.
 export function reviewerAgreementStats(allAnalyses) {
   const reviewed = allAnalyses.filter((a) => a.is_approved);
   const counts = { median: 0, mean: 0, override: 0, claude: 0, gemini: 0, openai: 0 };
   for (const analysis of reviewed) {
     const bcsScore = analysis?.bcsScore || {};
-    if (bcsScore.median_bcs_score?.is_selected) {
-      const current = bcsScore.median_bcs_score.score;
-      const aiMedian = aiComputedMedian(analysis);
-      const aiMean = analysis?.mean_bcs_score ?? bcsScore.mean_bcs_score ?? null;
-      if (aiMedian != null && Math.abs(current - aiMedian) < CLOSE_ENOUGH) counts.median += 1;
-      else if (aiMean != null && Math.abs(current - aiMean) < CLOSE_ENOUGH) counts.mean += 1;
-      else counts.override += 1;
-    }
+    const matched = [];
+    if (bcsScore.is_median_true) matched.push('median');
+    if (bcsScore.is_mean_true) matched.push('mean');
     for (const provider of PROVIDERS) {
-      if (bcsScore[provider]?.is_selected) counts[provider] += 1;
+      if (bcsScore[provider]?.is_true) matched.push(provider);
     }
+    if (matched.length === 0) counts.override += 1; // nothing matched -> a manual override
+    else for (const key of matched) counts[key] += 1;
   }
   const total = reviewed.length;
   return ['median', 'mean', 'override', ...PROVIDERS].map((key) => ({
@@ -131,32 +79,21 @@ export function reviewerAgreementStats(allAnalyses) {
 }
 
 // Who the final score actually came from, regardless of how the reviewer
-// got there - a direct pick, or an accepted/overridden median value that
+// got there - a direct pick, or an accepted median/mean/override value that
 // happens to equal one specific provider's own final_bcs. Complements
 // reviewerAgreementStats (which button did the reviewer click) with a
-// different question (whose number is actually driving the record): with 3
-// successful providers the median is mathematically always exactly one of
-// them, so a "median accepted" win in that chart is really a win for
-// whichever provider ranked in the middle that time.
+// different question (whose number is actually driving the record). Values
+// are exact quarter-point numbers on both sides, so a plain === is safe -
+// no epsilon needed.
 export function modelInfluenceStats(allAnalyses) {
   const reviewed = allAnalyses.filter((a) => a.is_approved);
   const counts = { claude: 0, gemini: 0, openai: 0, unattributed: 0 };
   for (const analysis of reviewed) {
     const bcsScore = analysis?.bcsScore || {};
-    const directPick = PROVIDERS.find((provider) => bcsScore[provider]?.is_selected);
-    if (directPick) {
-      counts[directPick] += 1;
-      continue;
-    }
-    if (!bcsScore.median_bcs_score?.is_selected) continue; // clearSelections guarantees one of the checks above is always true
-    const finalScore = bcsScore.median_bcs_score.score;
+    const finalScore = analysis.final_bcs;
     const matchingProviders = PROVIDERS.filter((provider) => {
       const assessment = bcsScore[provider];
-      return (
-        assessment?.status === 'success' &&
-        assessment?.final_bcs != null &&
-        Math.abs(assessment.final_bcs - finalScore) < CLOSE_ENOUGH
-      );
+      return assessment?.status === 'success' && assessment?.final_bcs != null && assessment.final_bcs === finalScore;
     });
     // Exactly one match -> that provider's number is what the record's
     // score actually is. Zero matches (a genuinely blended value) or more
@@ -255,4 +192,12 @@ export function scoreVolatility(cows, allAnalyses, threshold = VOLATILITY_THRESH
 // sidebar's count can never drift apart into two different definitions.
 export function reviewBacklog(cows) {
   return cows.filter((cow) => cow.latestAnalysisStatus === 'completed' && !cow.latestAnalysisIsApproved);
+}
+
+// Analyses flagged is_critical (providers disagreed by more than 0.5 BCS
+// points) that haven't been reviewed yet - these deserve priority attention
+// since accepting a computed median/mean on a critical one papers over a
+// real disagreement between models rather than resolving it.
+export function criticalReviewBacklog(allAnalyses) {
+  return allAnalyses.filter((a) => a.bcsScore?.is_critical && !a.is_approved);
 }

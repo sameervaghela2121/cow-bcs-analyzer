@@ -55,7 +55,8 @@ describe('CowDetailPage', () => {
               status: 'completed',
               createdAt: '2026-07-10T00:00:00Z',
               imageUrls: ['https://storage.googleapis.com/a2-img1.jpg'],
-              mean_bcs_score: 3.25,
+              final_bcs: null,
+              medianScore: 3.25,
               bcsScore: {
                 gemini: { final_bcs: 3.25, confidence: 'High', status: 'success' },
                 claude: { final_bcs: 3.0, confidence: 'Medium', status: 'success' },
@@ -66,7 +67,8 @@ describe('CowDetailPage', () => {
               status: 'completed',
               createdAt: '2026-07-01T00:00:00Z',
               imageUrls: ['https://storage.googleapis.com/a1-img1.jpg'],
-              mean_bcs_score: 3.0,
+              final_bcs: 3.0,
+              medianScore: 3.0,
               bcsScore: { gemini: { final_bcs: 3.0, confidence: 'Medium', status: 'success' } },
             },
           ],
@@ -77,7 +79,8 @@ describe('CowDetailPage', () => {
     renderDetail();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
     expect(screen.getAllByText(/completed/i).length).toBe(2);
-    // Shows the single mean score, not a per-provider breakdown.
+    // Shows the single overall score (final_bcs once reviewed, medianScore
+    // as a live preview before that), not a per-provider breakdown.
     expect(screen.getByText('3.25')).toBeInTheDocument();
     expect(screen.getByText('3.0')).toBeInTheDocument();
     expect(screen.queryByText(/gemini/i)).not.toBeInTheDocument();
@@ -108,7 +111,8 @@ describe('CowDetailPage', () => {
             id: 'a3',
             status: done ? 'completed' : 'processing',
             imageUrls: [],
-            mean_bcs_score: done ? 3.5 : null,
+            final_bcs: null,
+            medianScore: done ? 3.5 : null,
             bcsScore: done ? { gemini: { final_bcs: 3.5, confidence: 'High', status: 'success' } } : {},
           },
         });
@@ -150,7 +154,9 @@ describe('CowDetailPage', () => {
                 'https://storage.googleapis.com/img2.jpg',
                 'https://storage.googleapis.com/img3.jpg',
               ],
-              bcsScore: { mean_bcs_score: 3.25 },
+              final_bcs: null,
+              medianScore: 3.25,
+              bcsScore: {},
             },
           ],
           total: 1,
@@ -198,9 +204,9 @@ describe('CowDetailPage', () => {
       http.get('http://localhost:4000/api/cows/4417/analyses', () =>
         HttpResponse.json({
           bcsAnalyses: [
-            { id: 'a3', status: 'completed', createdAt: '2026-07-16T15:00:00Z', imageUrls: ['https://storage.googleapis.com/a3.jpg'], bcsScore: { mean_bcs_score: 3.0 } },
-            { id: 'a2', status: 'completed', createdAt: '2026-07-16T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a2.jpg'], bcsScore: { mean_bcs_score: 3.25 } },
-            { id: 'a1', status: 'completed', createdAt: '2026-07-10T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a1.jpg'], bcsScore: { mean_bcs_score: 2.75 } },
+            { id: 'a3', status: 'completed', createdAt: '2026-07-16T15:00:00Z', imageUrls: ['https://storage.googleapis.com/a3.jpg'], final_bcs: null, medianScore: 3.0, bcsScore: {} },
+            { id: 'a2', status: 'completed', createdAt: '2026-07-16T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a2.jpg'], final_bcs: null, medianScore: 3.25, bcsScore: {} },
+            { id: 'a1', status: 'completed', createdAt: '2026-07-10T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a1.jpg'], final_bcs: null, medianScore: 2.75, bcsScore: {} },
           ],
           total: 3,
         })
@@ -231,7 +237,9 @@ describe('CowDetailPage', () => {
               imageUrls: ['https://storage.googleapis.com/original.jpg'],
               thumbnailUrls: ['https://storage.googleapis.com/300X300/thumb.jpg'],
               displayUrls: ['https://storage.googleapis.com/600X600/display.jpg'],
-              bcsScore: { mean_bcs_score: 3.25 },
+              final_bcs: null,
+              medianScore: 3.25,
+              bcsScore: {},
             },
           ],
           total: 1,

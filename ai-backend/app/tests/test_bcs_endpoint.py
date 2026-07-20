@@ -94,12 +94,16 @@ async def test_assess_bcs_fans_out_to_all_providers():
     assert body["openai"]["confidence"] is None
     assert "simulated quota error" in body["openai"]["error_message"]
 
-    # mean of the 2 providers that actually succeeded: (3.0 + 3.5) / 2 = 3.25
-    assert body["mean_bcs_score"] == 3.25
-    assert body["median_bcs_score"]["score"] == 3.25
-    assert body["median_bcs_score"]["is_selected"] is False
-    assert body["gemini"]["is_selected"] is False
-    assert body["claude"]["is_selected"] is False
+    # spread between the 2 successful scores is exactly 0.5 - not critical
+    # ("more than 0.5", not "0.5 or more").
+    assert body["is_critical"] is False
+    # nothing has been reviewed yet - every selectable flag starts at None,
+    # not False, so "not yet decided" stays distinguishable from "reviewed
+    # and rejected".
+    assert body["is_mean_true"] is None
+    assert body["is_median_true"] is None
+    assert body["gemini"]["is_true"] is None
+    assert body["claude"]["is_true"] is None
 
 
 @pytest.mark.asyncio
@@ -125,15 +129,13 @@ async def test_assess_bcs_can_be_narrowed_to_a_subset():
     assert body["openai"]["final_bcs"] is None
     assert body["openai"]["confidence"] is None
 
-    # only 1 provider was queried and it succeeded - mean is just its score,
-    # and claude/openai's default status="success" (despite never being
-    # queried) must NOT sneak into the divisor.
-    assert body["mean_bcs_score"] == 3.0
-    assert body["median_bcs_score"]["score"] == 3.0
+    # only 1 provider succeeded - is_critical needs at least 2 scores to
+    # measure disagreement between, so it stays False by definition.
+    assert body["is_critical"] is False
 
 
 @pytest.mark.asyncio
-async def test_assess_bcs_mean_divides_by_all_three_when_all_three_succeed():
+async def test_is_critical_false_when_all_three_agree_closely():
     fake_bytes = b"fake-image-bytes"
     files = [("images", ("img1.jpg", fake_bytes, "image/jpeg")) for _ in range(4)]
 
@@ -148,7 +150,7 @@ async def test_assess_bcs_mean_divides_by_all_three_when_all_three_succeed():
         ),
         patch(
             "app.services.llm.openai_provider.OpenAIProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(3.75)),
+            new=AsyncMock(return_value=fake_reply_with_score(3.0)),
         ),
     ):
         response = client.post("/api/bcs/assess", files=files)
@@ -159,18 +161,12 @@ async def test_assess_bcs_mean_divides_by_all_three_when_all_three_succeed():
     assert body["claude"]["status"] == "success"
     assert body["openai"]["status"] == "success"
 
-    # (3.0 + 3.25 + 3.75) / 3 = 3.3333... -> rounded to the nearest 0.25 = 3.25
-    assert body["mean_bcs_score"] == 3.25
-    # median of [3.0, 3.25, 3.75] is just the middle value - happens to match
-    # the mean here too, since the values are evenly spaced either side of it
-    assert body["median_bcs_score"]["score"] == 3.25
+    # spread across [3.0, 3.25, 3.0] is 0.25 - well under the 0.5 threshold
+    assert body["is_critical"] is False
 
 
 @pytest.mark.asyncio
-async def test_assess_bcs_mean_and_median_can_genuinely_differ():
-    """Median is the middle value, mean is pulled toward outliers - with a
-    skewed set of scores the two must not just coincidentally match, proving
-    median isn't secretly computed as (or confused with) the mean."""
+async def test_is_critical_true_when_providers_disagree_by_more_than_half_a_point():
     fake_bytes = b"fake-image-bytes"
     files = [("images", ("img1.jpg", fake_bytes, "image/jpeg")) for _ in range(4)]
 
@@ -193,11 +189,38 @@ async def test_assess_bcs_mean_and_median_can_genuinely_differ():
     assert response.status_code == 200
     body = response.json()
 
-    # mean: (1.0 + 1.25 + 5.0) / 3 = 2.4166... -> rounded to nearest 0.25 = 2.5
-    assert body["mean_bcs_score"] == 2.5
-    # median: the middle of [1.0, 1.25, 5.0] sorted is 1.25, already on-scale
-    assert body["median_bcs_score"]["score"] == 1.25
-    assert body["mean_bcs_score"] != body["median_bcs_score"]["score"]
+    # spread across [1.0, 1.25, 5.0] is 4.0 - well past the 0.5 threshold
+    assert body["is_critical"] is True
+
+
+@pytest.mark.asyncio
+async def test_is_critical_true_at_the_tightest_possible_threshold_crossing():
+    """Scores only ever land on quarter-point increments, so the smallest
+    spread that can exceed 0.5 is 0.75 (the next increment up) - this is
+    the tightest real boundary case, tighter than the 4.0-spread test above."""
+    fake_bytes = b"fake-image-bytes"
+    files = [("images", ("img1.jpg", fake_bytes, "image/jpeg")) for _ in range(4)]
+
+    with (
+        patch(
+            "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
+            new=AsyncMock(return_value=fake_reply_with_score(3.0)),
+        ),
+        patch(
+            "app.services.llm.claude_provider.ClaudeProvider.analyze_images",
+            new=AsyncMock(return_value=fake_reply_with_score(3.75)),
+        ),
+        patch(
+            "app.services.llm.openai_provider.OpenAIProvider.analyze_images",
+            new=AsyncMock(side_effect=RuntimeError("simulated quota error")),
+        ),
+    ):
+        response = client.post("/api/bcs/assess", files=files)
+
+    assert response.status_code == 200
+    body = response.json()
+    # spread is exactly 0.75 - just above the 0.5 threshold
+    assert body["is_critical"] is True
 
 
 @pytest.mark.asyncio

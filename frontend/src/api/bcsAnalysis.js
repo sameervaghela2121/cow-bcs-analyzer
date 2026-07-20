@@ -12,10 +12,11 @@ export const bcsAnalysisApi = {
 
   get: (id) => apiClient.get(`/bcs-analysis/${id}`).then((r) => r.data.bcsAnalysis),
 
-  approve: (id) => apiClient.patch(`/bcs-analysis/${id}/approve`).then((r) => r.data.bcsAnalysis),
-
-  selectProvider: (id, provider) =>
-    apiClient.patch(`/bcs-analysis/${id}/select`, { provider }).then((r) => r.data.bcsAnalysis),
+  // source: 'claude' | 'gemini' | 'openai' | 'mean' | 'median'. No separate
+  // approve() anymore - selecting 'median' (which auto-matches any provider
+  // that agrees with it) covers what it used to do.
+  selectScore: (id, source) =>
+    apiClient.patch(`/bcs-analysis/${id}/select`, { source }).then((r) => r.data.bcsAnalysis),
 
   override: (id, score) => apiClient.patch(`/bcs-analysis/${id}/override`, { score }).then((r) => r.data.bcsAnalysis),
 };

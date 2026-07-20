@@ -24,7 +24,6 @@ export default function AppShell() {
     <div style={rootStyle}>
       <div className="bcs-sidebar" style={{ width: 216, flexShrink: 0, background: '#1c2a20', color: '#eee8d8', display: 'flex', flexDirection: 'column', padding: '22px 14px', gap: 2 }}>
         <div className="bcs-logo" style={{ fontSize: 17, fontWeight: 700, padding: '2px 10px 22px' }}>BCS Tracker</div>
-        <NavLink to="/dashboard" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Dashboard</NavLink>
         <NavLink to="/upload" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Upload</NavLink>
         <NavLink to="/herd" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Herd</NavLink>
         <NavLink to="/review" className="bcs-nav" style={({ isActive }) => ({ ...(isActive ? navActive : navBase), position: 'relative' })}>
@@ -39,6 +38,7 @@ export default function AppShell() {
         {isAdmin && (
           <NavLink to="/users" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>User</NavLink>
         )}
+        <NavLink to="/dashboard" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Dashboard</NavLink>
         <div className="bcs-sidebar-user" style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '10px', borderRadius: 8, background: '#26362b' }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#33443a', color: '#eee8d8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
             {(user?.name || user?.email || '?').trim().charAt(0).toUpperCase()}

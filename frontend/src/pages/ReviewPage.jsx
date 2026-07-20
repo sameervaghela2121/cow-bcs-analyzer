@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { Check } from 'lucide-react';
 import { cowsApi } from '../api/cows.js';
 import { bcsAnalysisApi } from '../api/bcsAnalysis.js';
 import Badge from '../components/Badge.jsx';
@@ -14,31 +15,65 @@ function roundQuarter(n) {
   return Math.round(n * 4) / 4;
 }
 
-const PROVIDERS = [
+const CANDIDATES = [
   { key: 'claude', label: 'Claude' },
   { key: 'gemini', label: 'Gemini' },
   { key: 'openai', label: 'OpenAI' },
+  { key: 'mean', label: 'Mean' },
+  { key: 'median', label: 'Median' },
 ];
 
-function ProviderCheckbox({ label, assessment, selected, disabled, onSelect }) {
-  const available = assessment?.status === 'success' && assessment?.final_bcs != null;
+// meanScore/medianScore come pre-computed from the backend (same math,
+// computed fresh on every read - see bcsScoring.js) - no need to recompute
+// them here, just read them alongside the per-provider raw scores.
+function candidateValue(analysis, key) {
+  if (key === 'mean') return analysis.meanScore;
+  if (key === 'median') return analysis.medianScore;
+  const assessment = analysis.bcsScore?.[key];
+  return assessment?.status === 'success' ? assessment.final_bcs : null;
+}
+
+// A toggle chip, not a raw checkbox - `checked` reflects whether this
+// candidate's value exactly matches whatever's currently clicked (see
+// ReviewRow), not whether *this specific* chip was the one clicked. That's
+// what makes several chips light up from a single click when their values
+// coincide.
+function CandidateChip({ label, value, checked, disabled, onClick, style }) {
+  const available = value != null;
   return (
-    <label
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!available || disabled}
+      aria-pressed={checked}
       style={{
-        display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5,
-        color: available ? '#3a3324' : '#b7b0a0', cursor: available && !disabled ? 'pointer' : 'not-allowed',
+        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999,
+        fontSize: 12.5, fontWeight: 600, border: checked ? '1.5px solid #166534' : '1px solid #d8d2c2',
+        background: checked ? '#e6f2e8' : '#fff',
+        color: available ? (checked ? '#166534' : '#3a3324') : '#b7b0a0',
+        cursor: available && !disabled ? 'pointer' : 'not-allowed',
+        opacity: disabled && available ? 0.6 : 1,
+        ...style,
       }}
     >
-      <input type="checkbox" checked={!!selected} disabled={!available || disabled} onChange={onSelect} />
-      {label}: {available ? `${formatScore(assessment.final_bcs)}${assessment.confidence ? ` (${assessment.confidence})` : ''}` : 'No score'}
-    </label>
+      <span style={{
+        width: 15, height: 15, borderRadius: 4, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: checked ? 'none' : '1.5px solid #c9c2ae', background: checked ? '#166534' : 'transparent',
+      }}>
+        {checked && <Check size={11} color="#fff" strokeWidth={3} />}
+      </span>
+      {label}: {available ? formatScore(value) : 'No score'}
+    </button>
   );
 }
 
-// Approve (.../approve), checkbox selection (.../select), and Override
-// (.../override) all set is_approved on the record - each is itself a
-// review decision, just as final as any other - so all three persist the
-// record and drop this row off the review list once the cows list reflects it.
+// Approve no longer exists as a separate action - clicking Median (which
+// auto-matches any provider that happens to agree with it) and hitting Save
+// is a strict superset of what it used to do. Selecting a candidate
+// (PATCH .../select) and Overriding (PATCH .../override) both set
+// is_approved on the record - each is itself a final review decision, so
+// both persist and drop this row off the review list once the cows list
+// reflects it.
 function ReviewRow({ cow }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -51,89 +86,58 @@ function ReviewRow({ cow }) {
   // cows list) is by definition that same newest record's status - so once
   // it's "completed", [0] here is guaranteed to be that exact analysis.
   const latest = data?.bcsAnalyses?.[0];
-  const medianScore = latest?.bcsScore?.median_bcs_score?.score ?? null;
-  // Exactly one of median/claude/gemini/openai is ever is_selected on the
-  // record itself - reflect whichever the backend currently says is picked.
-  const selectedProvider = PROVIDERS.find((p) => latest?.bcsScore?.[p.key]?.is_selected)?.key ?? null;
-  const selectedProviderScore = selectedProvider ? latest?.bcsScore?.[selectedProvider]?.final_bcs ?? null : null;
 
+  // Which candidate the reviewer clicked - null until they pick one. Not
+  // saved anywhere until Save is pressed; the backend does the real
+  // matching (and is the source of truth for what actually gets persisted),
+  // this is purely a client-side preview of what Save would do.
+  const [selectedSource, setSelectedSource] = useState(null);
   const [editing, setEditing] = useState(false);
   const [tempScore, setTempScore] = useState(0);
-  const [overriddenScore, setOverriddenScore] = useState(null);
-  // Checking a provider's box doesn't save immediately - it just stages a
-  // choice ("Select Gemini's score (3.5) as final?") that still needs an
-  // explicit Confirm, same idea as the Override stepper below.
-  const [pendingProvider, setPendingProvider] = useState(null);
-  // Captured at the moment Override is opened - medianScore itself becomes
-  // the *new* value once the mutation's invalidation refetch lands, so
-  // reading it live afterward for "Overridden from X" would show the new
-  // value twice instead of the value being replaced.
-  const [preOverrideScore, setPreOverrideScore] = useState(null);
 
-  // All three mutations end up changing whether this cow still belongs in
-  // the review list (latestAnalysisIsApproved, on the cows list), not just
-  // this row's own analysis detail - both queries need refreshing either way.
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ['cow-analyses', cow.cowsId] });
     queryClient.invalidateQueries({ queryKey: ['cows'] });
   }
 
-  const approveMutation = useMutation({
-    mutationFn: () => bcsAnalysisApi.approve(latest.id),
-    onSuccess: () => {
-      setOverriddenScore(null);
-      invalidateAll();
-      showToast('Approved successfully.');
-    },
-    onError: () => showToast('Failed to approve - please try again.', { type: 'error' }),
-  });
-
   const selectMutation = useMutation({
-    mutationFn: (provider) => bcsAnalysisApi.selectProvider(latest.id, provider),
-    onSuccess: () => {
-      setOverriddenScore(null);
-      invalidateAll();
-      showToast('Selection saved successfully.');
-    },
-    onError: () => showToast('Failed to save selection - please try again.', { type: 'error' }),
-    onSettled: () => setPendingProvider(null),
+    mutationFn: (source) => bcsAnalysisApi.selectScore(latest.id, source),
+    onSuccess: () => { invalidateAll(); showToast('Review submitted successfully.'); },
+    onError: () => showToast('Failed to submit - please try again.', { type: 'error' }),
   });
 
   const overrideMutation = useMutation({
     mutationFn: (score) => bcsAnalysisApi.override(latest.id, score),
-    onSuccess: () => {
-      invalidateAll();
-      showToast('Override saved successfully.');
-    },
+    onSuccess: () => { invalidateAll(); showToast('Override saved successfully.'); },
     onError: () => showToast('Failed to save override - please try again.', { type: 'error' }),
   });
 
-  if (!latest) return null;
-  // Overriding is a newer decision than whatever is_approved says on the
-  // record - if the user just picked a different value, that takes visual
-  // priority over a possibly-stale "approved" from before the override.
-  const isApproved = latest.is_approved && overriddenScore == null;
-  const displayedScore = overriddenScore ?? (selectedProvider ? selectedProviderScore : medianScore);
-  const anyActionPending = approveMutation.isPending || selectMutation.isPending || overrideMutation.isPending;
+  // A row shouldn't render its controls once reviewed - it's about to drop
+  // off the list on the next refetch anyway, but this guards against it
+  // still being visible mid-transition instead of relying solely on that.
+  if (!latest || latest.is_approved) return null;
 
-  function goToCow() {
-    navigate(`/herd/${cow.cowsId}`);
+  const anyActionPending = selectMutation.isPending || overrideMutation.isPending;
+  const candidates = CANDIDATES.map((c) => ({ ...c, value: candidateValue(latest, c.key) }));
+  const clickedValue = selectedSource != null ? candidates.find((c) => c.key === selectedSource)?.value : null;
+  const previewScore = clickedValue ?? latest.medianScore;
+
+  function toggleCandidate(key) {
+    setSelectedSource((prev) => (prev === key ? null : key));
   }
 
   function startOverride() {
-    setPreOverrideScore(displayedScore);
-    setTempScore(displayedScore ?? 3);
+    setTempScore(previewScore ?? 3);
     setEditing(true);
   }
 
   function confirmOverride() {
-    setOverriddenScore(tempScore);
     setEditing(false);
     overrideMutation.mutate(tempScore);
   }
 
-  function confirmSelect() {
-    selectMutation.mutate(pendingProvider);
+  function goToCow() {
+    navigate(`/herd/${cow.cowsId}`);
   }
 
   return (
@@ -148,35 +152,23 @@ function ReviewRow({ cow }) {
         <div style={{ cursor: 'pointer' }} onClick={goToCow}>
           <div style={{ fontSize: '14.5px', fontWeight: 700 }}>Cow {cow.cowsId}</div>
           <div style={{ fontSize: '12.5px', color: '#82796a' }}>Last analyzed {fmtDate(latest.createdAt)}</div>
-          {isApproved && (
-            <div style={{ fontSize: '11.5px', color: '#166534', fontWeight: 600 }}>
-              {selectedProvider
-                ? `Approved: ${PROVIDERS.find((p) => p.key === selectedProvider).label} selected`
-                : 'Approved as-is (median)'}
-            </div>
-          )}
-          {!isApproved && overriddenScore != null && (
-            <div style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 600 }}>Overridden from {formatScore(preOverrideScore)}</div>
-          )}
-          {approveMutation.isError && (
-            <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Approve failed - try again.</div>
-          )}
           {selectMutation.isError && (
-            <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Selection failed - try again.</div>
+            <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Failed to submit - try again.</div>
           )}
           {overrideMutation.isError && (
             <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Override failed - try again.</div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
-          {PROVIDERS.map((p) => (
-            <ProviderCheckbox
-              key={p.key}
-              label={p.label}
-              assessment={latest.bcsScore?.[p.key]}
-              selected={selectedProvider === p.key || pendingProvider === p.key}
-              disabled={anyActionPending || editing || pendingProvider != null}
-              onSelect={() => setPendingProvider(p.key)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          {candidates.map((c, i) => (
+            <CandidateChip
+              key={c.key}
+              label={c.label}
+              value={c.value}
+              checked={c.value != null && clickedValue != null && c.value === clickedValue}
+              disabled={anyActionPending || editing}
+              onClick={() => toggleCandidate(c.key)}
+              style={i === 3 ? { marginLeft: 48 } : undefined}
             />
           ))}
         </div>
@@ -187,42 +179,25 @@ function ReviewRow({ cow }) {
           <button onClick={() => setTempScore((s) => Math.max(1, roundQuarter(s - 0.25)))} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #d8d2c2', cursor: 'pointer' }}>&minus;</button>
           <div style={{ fontSize: 18, fontWeight: 800, minWidth: 44, textAlign: 'center' }}>{formatScore(tempScore)}</div>
           <button onClick={() => setTempScore((s) => Math.min(5, roundQuarter(s + 0.25)))} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #d8d2c2', cursor: 'pointer' }}>+</button>
-          <button onClick={confirmOverride} style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer' }}>Confirm</button>
-          <button onClick={() => setEditing(false)} style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}>Cancel</button>
-        </div>
-      ) : pendingProvider ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12.5, color: '#3a3324' }}>
-            Select {PROVIDERS.find((p) => p.key === pendingProvider).label}&apos;s score (
-            {formatScore(latest.bcsScore?.[pendingProvider]?.final_bcs)}) as final?
-          </span>
-          <button
-            onClick={confirmSelect}
-            disabled={selectMutation.isPending}
-            style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer' }}
-          >
-            {selectMutation.isPending ? 'Saving…' : 'Confirm'}
+          <button onClick={confirmOverride} disabled={overrideMutation.isPending} style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer' }}>
+            {overrideMutation.isPending ? 'Saving…' : 'Confirm'}
           </button>
-          <button
-            onClick={() => setPendingProvider(null)}
-            disabled={selectMutation.isPending}
-            style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}
-          >
+          <button onClick={() => setEditing(false)} disabled={overrideMutation.isPending} style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}>
             Cancel
           </button>
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Badge score={displayedScore} />
+          <Badge score={previewScore} />
           <button
-            onClick={() => approveMutation.mutate()}
-            disabled={anyActionPending}
+            onClick={() => selectMutation.mutate(selectedSource)}
+            disabled={anyActionPending || selectedSource == null}
             style={{
-              padding: '8px 14px', borderRadius: 7, border: '1px solid #166534', cursor: 'pointer', fontWeight: 700,
-              background: isApproved && !selectedProvider ? '#166534' : '#fff', color: isApproved && !selectedProvider ? '#fff' : '#166534',
+              padding: '8px 14px', borderRadius: 7, border: 'none', cursor: selectedSource == null ? 'default' : 'pointer', fontWeight: 700,
+              background: selectedSource == null ? '#efece1' : '#166534', color: selectedSource == null ? '#a39c86' : '#fff',
             }}
           >
-            {isApproved && !selectedProvider ? 'Approved' : approveMutation.isPending ? 'Approving…' : 'Approve'}
+            {selectMutation.isPending ? 'Saving…' : 'Save'}
           </button>
           <button
             onClick={startOverride}
@@ -249,7 +224,8 @@ export default function ReviewPage() {
     <div style={{ padding: '32px 28px 60px' }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Review</h1>
       <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 22px' }}>
-        Completed analyses waiting for a reviewer - approve the median, check a model's score to select it instead, or override with a custom value, and it drops off this list.
+        Completed analyses waiting for a reviewer - click any combination of models, mean, or median that
+        looks right (matching ones highlight together automatically), then Save. Or Override with your own value.
       </p>
 
       {cows.length === 0 && (
