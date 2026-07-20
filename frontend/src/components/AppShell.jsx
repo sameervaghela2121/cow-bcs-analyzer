@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { THEME } from '../domain/bcs.js';
+import { reviewBacklog } from '../domain/dashboardStats.js';
 import { cowsApi } from '../api/cows.js';
 import './AppShell.css';
 
@@ -17,14 +18,13 @@ export default function AppShell() {
   // approve) - a cow counts here exactly when ReviewPage would show it:
   // its latest analysis completed but hasn't been approved yet.
   const { data } = useQuery({ queryKey: ['cows'], queryFn: () => cowsApi.list() });
-  const flaggedCount = (data?.cows || []).filter(
-    (cow) => cow.latestAnalysisStatus === 'completed' && !cow.latestAnalysisIsApproved
-  ).length;
+  const flaggedCount = reviewBacklog(data?.cows || []).length;
 
   return (
     <div style={rootStyle}>
       <div className="bcs-sidebar" style={{ width: 216, flexShrink: 0, background: '#1c2a20', color: '#eee8d8', display: 'flex', flexDirection: 'column', padding: '22px 14px', gap: 2 }}>
         <div className="bcs-logo" style={{ fontSize: 17, fontWeight: 700, padding: '2px 10px 22px' }}>BCS Tracker</div>
+        <NavLink to="/dashboard" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Dashboard</NavLink>
         <NavLink to="/upload" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Upload</NavLink>
         <NavLink to="/herd" className="bcs-nav" style={({ isActive }) => (isActive ? navActive : navBase)}>Herd</NavLink>
         <NavLink to="/review" className="bcs-nav" style={({ isActive }) => ({ ...(isActive ? navActive : navBase), position: 'relative' })}>
