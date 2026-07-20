@@ -1,8 +1,24 @@
 const Cow = require('../models/Cow');
 const BcsAnalysis = require('../models/BcsAnalysis');
 const { serializeBcsAnalysis } = require('./bcsAnalysisController');
+const { fromGsUri, generateReadUrl } = require('../services/gcsService');
+const { THUMBNAIL, buildVariantObjectPath } = require('../services/imageVariants');
 
-function serializeCow(cow, latestAnalysis) {
+// Cover photo for the herd grid card: the latest analysis's first image,
+// as its compressed 300X300 thumbnail variant. latestAnalysisImageUrl (the
+// original) is included alongside purely as an onError fallback on the
+// frontend, same pattern as bcsAnalysisController.serializeBcsAnalysis.
+async function serializeCow(cow, latestAnalysis) {
+  const firstImageUri = latestAnalysis?.cowsImages?.[0];
+  let latestAnalysisThumbnailUrl = null;
+  let latestAnalysisImageUrl = null;
+  if (firstImageUri) {
+    const { objectPath } = fromGsUri(firstImageUri);
+    [latestAnalysisThumbnailUrl, latestAnalysisImageUrl] = await Promise.all([
+      generateReadUrl({ objectPath: buildVariantObjectPath(objectPath, THUMBNAIL.name) }),
+      generateReadUrl({ objectPath }),
+    ]);
+  }
   return {
     id: cow._id.toString(),
     cowsId: cow.cowsId,
@@ -11,6 +27,8 @@ function serializeCow(cow, latestAnalysis) {
     latestAnalysisStatus: latestAnalysis?.status ?? null,
     latestAnalysisAt: latestAnalysis?.createdAt ?? null,
     latestAnalysisIsApproved: latestAnalysis?.is_approved ?? null,
+    latestAnalysisThumbnailUrl,
+    latestAnalysisImageUrl,
   };
 }
 
@@ -21,7 +39,7 @@ async function create(req, res, next) {
     const existing = await Cow.findOne({ cowsId });
     if (existing) return res.status(409).json({ error: 'A cow with this ID already exists.' });
     const cow = await Cow.create({ cowsId });
-    res.status(201).json({ cow: serializeCow(cow) });
+    res.status(201).json({ cow: await serializeCow(cow) });
   } catch (err) {
     next(err);
   }
@@ -31,7 +49,7 @@ async function getOne(req, res, next) {
   try {
     const cow = await Cow.findOne({ cowsId: req.params.cowsId });
     if (!cow) return res.status(404).json({ error: 'Cow not found.' });
-    res.json({ cow: serializeCow(cow) });
+    res.json({ cow: await serializeCow(cow) });
   } catch (err) {
     next(err);
   }
@@ -60,13 +78,16 @@ async function list(req, res, next) {
           status: { $first: '$status' },
           createdAt: { $first: '$createdAt' },
           is_approved: { $first: '$is_approved' },
+          cowsImages: { $first: '$cowsImages' },
         },
       },
     ]);
     const latestById = new Map(latestAnalysisByCow.map((d) => [d._id.toString(), d]));
 
     res.json({
-      cows: cows.map((cow) => serializeCow(cow, latestById.get(cow._id.toString()))),
+      cows: await Promise.all(
+        cows.map((cow) => serializeCow(cow, latestById.get(cow._id.toString())))
+      ),
       total,
     });
   } catch (err) {

@@ -19,4 +19,7 @@ module.exports = {
     keyFile: process.env.GCS_KEY_FILE || null,
     signedUrlExpiryMs: Number(process.env.GCS_SIGNED_URL_EXPIRY_MS) || 15 * 60 * 1000,
   },
+  imageCompressor: {
+    url: process.env.IMAGE_COMPRESSOR_URL || null,
+  },
 };

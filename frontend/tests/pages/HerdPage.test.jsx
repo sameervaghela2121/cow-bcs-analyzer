@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -47,22 +47,32 @@ describe('HerdPage', () => {
     expect(screen.getByText('Cow 5001')).toBeInTheDocument();
   });
 
-  it('shows a status pill below each card, and a placeholder when there are no uploads yet', async () => {
+  it('shows the compressed thumbnail as the card cover, falling back to the original on error, or a placeholder with no uploads', async () => {
     server.use(
       http.get('http://localhost:4000/api/cows', () =>
         HttpResponse.json({
           cows: [
-            { id: 'c1', cowsId: '4417', latestAnalysisStatus: 'processing' },
-            { id: 'c2', cowsId: '5001', latestAnalysisStatus: null },
+            {
+              id: 'c1',
+              cowsId: '4417',
+              latestAnalysisThumbnailUrl: 'https://storage.googleapis.com/300X300/thumb.jpg',
+              latestAnalysisImageUrl: 'https://storage.googleapis.com/original.jpg',
+            },
+            { id: 'c2', cowsId: '5001', latestAnalysisThumbnailUrl: null, latestAnalysisImageUrl: null },
           ],
           total: 2,
         })
       )
     );
-    renderHerd();
+    const { container } = renderHerd();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
-    expect(screen.getByText(/processing/i)).toBeInTheDocument();
-    expect(screen.getByText(/no uploads yet/i)).toBeInTheDocument();
+
+    const images = container.querySelectorAll('img');
+    expect(images).toHaveLength(1); // only the cow with a photo renders an <img>
+    expect(images[0]).toHaveAttribute('src', 'https://storage.googleapis.com/300X300/thumb.jpg');
+
+    fireEvent.error(images[0]);
+    expect(images[0]).toHaveAttribute('src', 'https://storage.googleapis.com/original.jpg');
   });
 
   it('navigates to the cow detail page using cowsId when a card is clicked', async () => {
@@ -93,13 +103,12 @@ describe('HerdPage', () => {
     );
 
     renderHerd();
-    await waitFor(() => expect(screen.getByText(/processing|completed/i)).toBeInTheDocument());
+    await waitFor(() => expect(calls).toBeGreaterThanOrEqual(1));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(25000);
     });
-    await waitFor(() => expect(screen.getByText(/^completed$/i)).toBeInTheDocument());
-    expect(calls).toBeGreaterThanOrEqual(3);
+    await waitFor(() => expect(calls).toBeGreaterThanOrEqual(3));
     const callsAtCompletion = calls;
 
     await act(async () => {

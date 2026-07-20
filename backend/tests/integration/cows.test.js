@@ -8,6 +8,7 @@ jest.mock('../../src/services/gcsService', () => {
 
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
+const { generateReadUrl } = require('../../src/services/gcsService');
 const { createApp } = require('../../src/app');
 const { connect, clearDatabase, closeDatabase } = require('../setup');
 const User = require('../../src/models/User');
@@ -84,6 +85,34 @@ describe('GET /api/cows (herd list)', () => {
   it('has no latestAnalysisStatus for a cow with no uploads yet', async () => {
     const res = await request(app).get('/api/cows?search=1001').set('Authorization', `Bearer ${token}`);
     expect(res.body.cows[0].latestAnalysisStatus).toBeNull();
+  });
+
+  it('has no thumbnail/image URLs for a cow with no uploads yet', async () => {
+    const res = await request(app).get('/api/cows?search=1001').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestAnalysisThumbnailUrl).toBeNull();
+    expect(res.body.cows[0].latestAnalysisImageUrl).toBeNull();
+  });
+
+  it('signs a thumbnail and original image URL from the latest analysis\'s first photo', async () => {
+    const user = await User.findOne({ email: 'herd@example.com' });
+    const cow = await Cow.findOne({ cowsId: '1002' });
+    await BcsAnalysis.create({
+      cow: cow._id, cowsId: cow.cowsId,
+      cowsImages: ['gs://bucket/1002/2026-07-16T00-00-00-000Z/a.jpg', 'gs://bucket/1002/2026-07-16T00-00-00-000Z/b.jpg'],
+      status: 'completed', createdBy: user._id, updatedBy: user._id,
+    });
+
+    generateReadUrl.mockClear();
+    const res = await request(app).get('/api/cows?search=1002').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestAnalysisThumbnailUrl).toBe('https://storage.googleapis.com/signed-get-url');
+    expect(res.body.cows[0].latestAnalysisImageUrl).toBe('https://storage.googleapis.com/signed-get-url');
+
+    // Only the first photo is used for the card cover, as its 300X300
+    // variant path alongside the original - never the second photo.
+    const calledPaths = generateReadUrl.mock.calls.map(([{ objectPath }]) => objectPath);
+    expect(calledPaths).toContain('1002/2026-07-16T00-00-00-000Z/300X300/a.jpg');
+    expect(calledPaths).toContain('1002/2026-07-16T00-00-00-000Z/a.jpg');
+    expect(calledPaths.some((p) => p.includes('/b.jpg'))).toBe(false);
   });
 
   it('surfaces the most recent analysis status per cow', async () => {

@@ -2,10 +2,28 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cowsApi } from '../api/cows.js';
-import StatusPill from '../components/StatusPill.jsx';
 import { PENDING_STATUSES } from '../domain/analysisStatus.js';
 
 const PAGE_SIZE = 10;
+
+// Cover photo for a herd card: the latest analysis's compressed 300X300
+// thumbnail, falling back to the original if that variant 404s (compression
+// still pending). Cows with no uploads yet keep the plain gradient block.
+function CowCardThumbnail({ thumbnailUrl, imageUrl }) {
+  const [failed, setFailed] = useState(false);
+  const src = !failed && thumbnailUrl ? thumbnailUrl : imageUrl;
+  if (!src) {
+    return <div style={{ height: 92, background: 'linear-gradient(135deg,#7c9b85,#4f6b57)' }} />;
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      onError={() => setFailed(true)}
+      style={{ height: 92, width: '100%', objectFit: 'cover', display: 'block' }}
+    />
+  );
+}
 
 export default function HerdPage() {
   const navigate = useNavigate();
@@ -66,17 +84,10 @@ export default function HerdPage() {
               onClick={() => navigate(`/herd/${cow.cowsId}`)}
               style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, overflow: 'hidden', cursor: 'pointer' }}
             >
-              <div style={{ height: 92, background: 'linear-gradient(135deg,#7c9b85,#4f6b57)' }} />
+              <CowCardThumbnail thumbnailUrl={cow.latestAnalysisThumbnailUrl} imageUrl={cow.latestAnalysisImageUrl} />
               <div style={{ padding: '12px 14px 14px' }}>
                 <div style={{ fontSize: 15, fontWeight: 700 }}>Cow {cow.cowsId}</div>
               </div>
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center' }}>
-              {cow.latestAnalysisStatus ? (
-                <StatusPill status={cow.latestAnalysisStatus} />
-              ) : (
-                <span style={{ fontSize: 11.5, color: '#a39c86' }}>No uploads yet</span>
-              )}
             </div>
           </div>
         ))}

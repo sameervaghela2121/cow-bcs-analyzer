@@ -99,6 +99,48 @@ describe('UploadPage', () => {
     expect(analyzeCalls).toBe(1);
   });
 
+  it('sanitizes original filenames instead of discarding them, deduping collisions within a batch', async () => {
+    let sentFilenames = [];
+    server.use(
+      http.post('http://localhost:4000/api/bcs-analysis/upload-urls', async ({ request }) => {
+        const body = await request.json();
+        sentFilenames = body.files.map((f) => f.filename);
+        return HttpResponse.json({
+          cowsId: '4417',
+          batchTimestamp: '2026-07-16T00-00-00-000Z',
+          uploads: body.files.map((f) => ({
+            filename: f.filename,
+            gsUri: `gs://test-bucket/4417/2026-07-16T00-00-00-000Z/${f.filename}`,
+            uploadUrl: `https://storage.googleapis.com/test-bucket/4417/${f.filename}`,
+          })),
+        });
+      }),
+      http.put('https://storage.googleapis.com/test-bucket/4417/:filename', () => new HttpResponse(null, { status: 200 })),
+      http.post('http://localhost:4000/api/bcs-analysis', async ({ request }) => {
+        const body = await request.json();
+        return HttpResponse.json(
+          { bcsAnalysis: { id: 'a1', cowsId: '4417', cowsImages: body.cowsImages, status: 'not_started', bcsScore: {} } },
+          { status: 201 }
+        );
+      }),
+      http.post('http://localhost:8000/api/bcs/analyze/a1', () => HttpResponse.json({ id: 'a1', status: 'processing' }, { status: 202 }))
+    );
+
+    const user = renderUpload();
+    await user.type(screen.getByLabelText(/cow id/i), '4417');
+    const input = screen.getByLabelText(/choose file/i, { selector: 'input' });
+    // Spaces/parens get sanitized to '-'; the second file sanitizes to the
+    // same base as the first ("cow-side-view") and must not overwrite it.
+    const fileA = new File(['a'], 'cow side view.jpg', { type: 'image/jpeg' });
+    const fileB = new File(['b'], 'cow (side) view.jpg', { type: 'image/jpeg' });
+    await user.upload(input, [fileA, fileB]);
+    await user.click(screen.getByRole('button', { name: /score 2 photos/i }));
+
+    await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
+
+    expect(sentFilenames).toEqual(['cow-side-view.jpg', 'cow-side-view-2.jpg']);
+  });
+
   it('still navigates to the herd page even if triggering analysis fails, since the record already exists', async () => {
     server.use(
       http.post('http://localhost:4000/api/bcs-analysis/upload-urls', async ({ request }) => {

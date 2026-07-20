@@ -14,8 +14,13 @@ function fmtDate(iso) {
 
 // Full-screen viewer for one analysis's photos. Wraps around at both ends
 // so left/right always does something instead of going dead at the first
-// or last photo.
-function Lightbox({ images, index, onClose, onNavigate }) {
+// or last photo. `images` is the compressed "display" variant (fast to
+// load); `fallbackImages` is the original, used per-photo if that variant
+// 404s (compression still pending, or a record from before this feature).
+function Lightbox({ images, fallbackImages, index, onClose, onNavigate }) {
+  const [failedIndices, setFailedIndices] = useState(() => new Set());
+  const src = failedIndices.has(index) ? (fallbackImages?.[index] ?? images[index]) : images[index];
+
   useEffect(() => {
     function handleKey(e) {
       if (e.key === 'Escape') onClose();
@@ -51,9 +56,10 @@ function Lightbox({ images, index, onClose, onNavigate }) {
       )}
 
       <img
-        src={images[index]}
+        src={src}
         alt=""
         onClick={(e) => e.stopPropagation()}
+        onError={() => setFailedIndices((prev) => new Set(prev).add(index))}
         style={{ maxWidth: '85vw', maxHeight: '85vh', borderRadius: 8, objectFit: 'contain' }}
       />
 
@@ -76,29 +82,21 @@ function Lightbox({ images, index, onClose, onNavigate }) {
   );
 }
 
-// Shows just the first photo as a cover thumbnail with a "+N" badge for the
-// rest, rather than a row of tiny images - clicking it opens the full
-// gallery for that analysis, starting from that photo.
-function AnalysisImages({ imageUrls, onOpen }) {
-  if (!imageUrls?.length) return null;
-  const extra = imageUrls.length - 1;
-  return (
-    <div
-      onClick={() => onOpen(imageUrls, 0)}
-      role="button"
-      tabIndex={0}
-      aria-label={`View ${imageUrls.length} photo${imageUrls.length === 1 ? '' : 's'}`}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(imageUrls, 0); }}
-      style={{ position: 'relative', width: 52, height: 52, borderRadius: 8, overflow: 'hidden', flexShrink: 0, cursor: 'pointer' }}
-    >
-      <img src={imageUrls[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-      {extra > 0 && (
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 700 }}>
-          +{extra}
-        </div>
-      )}
-    </div>
-  );
+// Consecutive-run grouping, not a full re-sort: analyses arrive already
+// sorted most-recent-first, so same-day records are already adjacent - this
+// just splits that single list into per-day chunks without reordering.
+function groupByDate(analyses) {
+  const groups = [];
+  let current = null;
+  for (const a of analyses) {
+    const key = fmtDate(a.createdAt);
+    if (!current || current.key !== key) {
+      current = { key, items: [] };
+      groups.push(current);
+    }
+    current.items.push(a);
+  }
+  return groups;
 }
 
 // mean_bcs_score is a root-level field on the analysis (a sibling of
@@ -110,29 +108,66 @@ function MeanScore({ score }) {
   const band = bandFor(score);
   return (
     <div style={{ textAlign: 'right' }}>
-      <div style={{ fontSize: 20, fontWeight: 800, color: band.color }}>{formatScore(score)}</div>
-      <div style={{ fontSize: 11, color: '#82796a' }}>{band.label}</div>
+      <div style={{ fontSize: 23, fontWeight: 800, color: band.color }}>{formatScore(score)}</div>
+      <div style={{ fontSize: 12, color: '#82796a' }}>{band.label}</div>
     </div>
   );
 }
 
-// Self-polls every 10s while pending (via usePollBcsAnalysis), stops once
-// completed/failed. Records that were already done when the list loaded
-// never start polling at all.
-function AnalysisRow({ analysis: initial, onOpenImages }) {
+// One upload batch as a card, sized to sit in a horizontal row alongside
+// other cards from the same day. Self-polls every 10s while pending (via
+// usePollBcsAnalysis), stops once completed/failed. Cover photo uses the
+// compressed "600X600" display variant rather than the 300X300 thumbnail -
+// at this card size the 300X300 would be upscaled (worse on Retina, which
+// needs 2x the pixels for a sharp render) - falling back to the original if
+// it 404s. The opened gallery uses the same 600X600 variant.
+function AnalysisCard({ analysis: initial, onOpenImages }) {
   const pending = PENDING_STATUSES.has(initial.status);
   const { analysis: polled } = usePollBcsAnalysis(pending ? initial.id : null);
   const analysis = polled || initial;
+  const [coverFailed, setCoverFailed] = useState(false);
+
+  const imageUrls = analysis.imageUrls || [];
+  const hasImages = imageUrls.length > 0;
+  const extra = imageUrls.length - 1;
+  const coverSrc = hasImages && (!coverFailed && analysis.displayUrls?.[0] ? analysis.displayUrls[0] : imageUrls[0]);
+
+  function openGallery() {
+    if (!hasImages) return;
+    const displayUrls = analysis.displayUrls;
+    onOpenImages(displayUrls?.length ? displayUrls : imageUrls, imageUrls, 0);
+  }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #e5e0d3', borderRadius: 10, padding: '12px 14px' }}>
-      <AnalysisImages imageUrls={analysis.imageUrls} onOpen={onOpenImages} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '13.5px', fontWeight: 600 }}>{fmtDate(analysis.createdAt)}</div>
-        <div style={{ fontSize: 12, color: statusColor(analysis.status), marginTop: 2, fontWeight: 600 }}>
+    <div style={{ width: 300, flexShrink: 0, background: '#fff', border: '1px solid #e5e0d3', borderRadius: 14, overflow: 'hidden' }}>
+      <div
+        onClick={openGallery}
+        role={hasImages ? 'button' : undefined}
+        tabIndex={hasImages ? 0 : undefined}
+        aria-label={hasImages ? `View ${imageUrls.length} photo${imageUrls.length === 1 ? '' : 's'}` : undefined}
+        onKeyDown={(e) => { if (hasImages && (e.key === 'Enter' || e.key === ' ')) openGallery(); }}
+        style={{ position: 'relative', height: 210, background: '#f2f0e8', cursor: hasImages ? 'pointer' : 'default' }}
+      >
+        {coverSrc && (
+          <img
+            src={coverSrc}
+            alt=""
+            onError={() => setCoverFailed(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        )}
+        {extra > 0 && (
+          <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, fontWeight: 700, borderRadius: 8, padding: '3px 8px' }}>
+            +{extra}
+          </div>
+        )}
+      </div>
+      <div style={{ padding: '14px 16px 16px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ fontSize: 13, color: statusColor(analysis.status), fontWeight: 700 }}>
           {statusLabel(analysis.status)}
           {analysis.status === 'failed' && analysis.errorMessage ? `: ${analysis.errorMessage}` : ''}
         </div>
+        {analysis.status === 'completed' && <MeanScore bcsScore={analysis.bcsScore} />}
       </div>
       {analysis.status === 'completed' && <MeanScore score={analysis.mean_bcs_score} />}
     </div>
@@ -142,7 +177,7 @@ function AnalysisRow({ analysis: initial, onOpenImages }) {
 export default function CowDetailPage() {
   const { cowsId } = useParams();
   const navigate = useNavigate();
-  const [lightbox, setLightbox] = useState(null); // { images, index } | null
+  const [lightbox, setLightbox] = useState(null); // { images, fallbackImages, index } | null
 
   const { data: cowData } = useQuery({ queryKey: ['cow', cowsId], queryFn: () => cowsApi.get(cowsId) });
   const { data: analysesData } = useQuery({ queryKey: ['cow-analyses', cowsId], queryFn: () => cowsApi.analyses(cowsId) });
@@ -159,17 +194,27 @@ export default function CowDetailPage() {
       </div>
       <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 22px' }}>Cow {cow.cowsId}</h1>
 
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Upload History</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {analyses.length === 0 && <div style={{ fontSize: 13, color: '#82796a' }}>No uploads yet.</div>}
-        {analyses.map((a) => (
-          <AnalysisRow key={a.id} analysis={a} onOpenImages={(images, index) => setLightbox({ images, index })} />
-        ))}
-      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Upload History</div>
+      {analyses.length === 0 && <div style={{ fontSize: 13, color: '#82796a' }}>No uploads yet.</div>}
+      {groupByDate(analyses).map((group) => (
+        <div key={group.key} style={{ marginBottom: 30 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#82796a', marginBottom: 12 }}>{group.key}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+            {group.items.map((a) => (
+              <AnalysisCard
+                key={a.id}
+                analysis={a}
+                onOpenImages={(images, fallbackImages, index) => setLightbox({ images, fallbackImages, index })}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
 
       {lightbox && (
         <Lightbox
           images={lightbox.images}
+          fallbackImages={lightbox.fallbackImages}
           index={lightbox.index}
           onClose={() => setLightbox(null)}
           onNavigate={(index) => setLightbox((prev) => ({ ...prev, index }))}

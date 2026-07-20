@@ -9,7 +9,7 @@ const EXTENSION_BY_TYPE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp
 
 const PHASE_LABEL = {
   preparing: 'Preparing upload…',
-  uploading: 'Uploading to storage…',
+  uploading: 'Uploading to',
   finalizing: 'Saving…',
 };
 
@@ -19,12 +19,31 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const UNSAFE_FILENAME_CHARS = /[^A-Za-z0-9._-]+/g;
+
 // Original filenames can contain spaces/unicode/anything - the backend only
-// accepts [A-Za-z0-9._-], so we never trust the browser's File.name and
-// generate a safe one instead.
-function safeFilename(file, index) {
-  const ext = EXTENSION_BY_TYPE[file.type] || 'bin';
-  return `photo-${index + 1}.${ext}`;
+// accepts [A-Za-z0-9._-] (and caps length at 128), so we sanitize rather
+// than trust File.name outright, while still keeping it recognizable
+// instead of discarding it for a generic "photo-N". `usedNames` dedupes
+// within one batch, since GCS object paths are flat per folder and two
+// sanitized-to-the-same-name files would otherwise silently overwrite
+// each other.
+function safeFilename(file, index, usedNames) {
+  const ext = EXTENSION_BY_TYPE[file.type] || (file.name.split('.').pop() || 'bin').toLowerCase().replace(UNSAFE_FILENAME_CHARS, '') || 'bin';
+  const rawBase = file.name.replace(/\.[^.]*$/, '');
+  const base = rawBase
+    .replace(UNSAFE_FILENAME_CHARS, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 100) || `photo-${index + 1}`;
+
+  let candidate = `${base}.${ext}`;
+  let suffix = 2;
+  while (usedNames.has(candidate)) {
+    candidate = `${base}-${suffix}.${ext}`;
+    suffix += 1;
+  }
+  usedNames.add(candidate);
+  return candidate;
 }
 
 // `progress` is only passed once the batch is uploading (0-100). Left
@@ -142,7 +161,8 @@ export default function UploadPage() {
     setPhase('preparing');
     setUploadProgress({});
     try {
-      const namedFiles = pendingFiles.map(({ file }, i) => ({ file, filename: safeFilename(file, i) }));
+      const usedFilenames = new Set();
+      const namedFiles = pendingFiles.map(({ file }, i) => ({ file, filename: safeFilename(file, i, usedFilenames) }));
 
       // 1. Backend finds-or-creates the cow and hands back one signed GCS
       //    upload URL per file, all in the same cowsId/<batchTimestamp>/ folder.
