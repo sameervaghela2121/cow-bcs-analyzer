@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage.jsx';
 import AcceptInvitePage from './pages/AcceptInvitePage.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
 import HerdPage from './pages/HerdPage.jsx';
 import CowDetailPage from './pages/CowDetailPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
@@ -18,7 +19,8 @@ export default function App() {
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
-          <Route path="/" element={<Navigate to="/herd" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/herd" element={<HerdPage />} />
           <Route path="/herd/:cowsId" element={<CowDetailPage />} />
