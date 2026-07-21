@@ -30,10 +30,11 @@ describe('Cow CRUD', () => {
   afterEach(async () => { await clearDatabase(); });
   afterAll(async () => { await closeDatabase(); });
 
-  it('creates a cow', async () => {
+  it('creates a cow, defaulting isActive to true', async () => {
     const res = await request(app).post('/api/cows').set('Authorization', `Bearer ${token}`).send({ cowsId: '4417' });
     expect(res.status).toBe(201);
     expect(res.body.cow.cowsId).toBe('4417');
+    expect(res.body.cow.isActive).toBe(true);
   });
 
   it('rejects a duplicate cowsId', async () => {
@@ -154,6 +155,39 @@ describe('GET /api/cows (herd list)', () => {
 
     const res = await request(app).get('/api/cows?search=1001').set('Authorization', `Bearer ${token}`);
     expect(res.body.cows[0].latestAnalysisIsApproved).toBe(false);
+  });
+
+  it('surfaces final_bcs as the latest BCS score once reviewed', async () => {
+    const user = await User.findOne({ email: 'herd@example.com' });
+    const cow = await Cow.findOne({ cowsId: '1002' });
+    await BcsAnalysis.create({
+      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
+      status: 'completed', is_approved: true, final_bcs: 3.25,
+      bcsScore: { gemini: { final_bcs: 3.0, status: 'success' } },
+      createdBy: user._id, updatedBy: user._id,
+    });
+
+    const res = await request(app).get('/api/cows?search=1002').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestBcsScore).toBe(3.25);
+  });
+
+  it('falls back to the computed median for the latest BCS score before a review decision', async () => {
+    const user = await User.findOne({ email: 'herd@example.com' });
+    const cow = await Cow.findOne({ cowsId: '1003' });
+    await BcsAnalysis.create({
+      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
+      status: 'completed',
+      bcsScore: { gemini: { final_bcs: 3.0, status: 'success' }, claude: { final_bcs: 3.5, status: 'success' } },
+      createdBy: user._id, updatedBy: user._id,
+    });
+
+    const res = await request(app).get('/api/cows?search=1003').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestBcsScore).toBe(3.25);
+  });
+
+  it('has a null latest BCS score for a cow with no uploads yet', async () => {
+    const res = await request(app).get('/api/cows?search=1001').set('Authorization', `Bearer ${token}`);
+    expect(res.body.cows[0].latestBcsScore).toBeNull();
   });
 });
 

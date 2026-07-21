@@ -3,6 +3,7 @@ const BcsAnalysis = require('../models/BcsAnalysis');
 const { serializeBcsAnalysis } = require('./bcsAnalysisController');
 const { fromGsUri, generateReadUrl } = require('../services/gcsService');
 const { THUMBNAIL, buildVariantObjectPath } = require('../services/imageVariants');
+const { successfulScores, medianOfScores } = require('../services/bcsScoring');
 
 // Cover photo for the herd grid card: the latest analysis's first image,
 // as its compressed 300X300 thumbnail variant. latestAnalysisImageUrl (the
@@ -19,14 +20,22 @@ async function serializeCow(cow, latestAnalysis) {
       generateReadUrl({ objectPath }),
     ]);
   }
+  // Same "final_bcs once reviewed, medianScore as a live preview before
+  // that" rule the cow detail page and ReviewPage use - never re-derived
+  // differently here.
+  const latestBcsScore = latestAnalysis
+    ? latestAnalysis.final_bcs ?? medianOfScores(successfulScores(latestAnalysis.bcsScore))
+    : null;
   return {
     id: cow._id.toString(),
     cowsId: cow.cowsId,
+    isActive: cow.isActive,
     createdAt: cow.createdAt,
     updatedAt: cow.updatedAt,
     latestAnalysisStatus: latestAnalysis?.status ?? null,
     latestAnalysisAt: latestAnalysis?.createdAt ?? null,
     latestAnalysisIsApproved: latestAnalysis?.is_approved ?? null,
+    latestBcsScore,
     latestAnalysisThumbnailUrl,
     latestAnalysisImageUrl,
   };
@@ -79,6 +88,8 @@ async function list(req, res, next) {
           createdAt: { $first: '$createdAt' },
           is_approved: { $first: '$is_approved' },
           cowsImages: { $first: '$cowsImages' },
+          final_bcs: { $first: '$final_bcs' },
+          bcsScore: { $first: '$bcsScore' },
         },
       },
     ]);
