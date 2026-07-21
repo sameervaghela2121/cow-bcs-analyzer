@@ -5,6 +5,7 @@ import { Check } from 'lucide-react';
 import { cowsApi } from '../api/cows.js';
 import { bcsAnalysisApi } from '../api/bcsAnalysis.js';
 import Badge from '../components/Badge.jsx';
+import Skeleton from '../components/Skeleton.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { formatScore } from '../domain/bcs.js';
 
@@ -129,6 +130,10 @@ function ReviewRow({ cow }) {
   function startOverride() {
     setTempScore(previewScore ?? 3);
     setEditing(true);
+    // Overriding means agreeing with none of the candidates - a chip left
+    // checked from before would misleadingly suggest this override happens
+    // to match one of them.
+    setSelectedSource(null);
   }
 
   function confirmOverride() {
@@ -212,8 +217,23 @@ function ReviewRow({ cow }) {
   );
 }
 
+function SkeletonReviewRow() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, padding: 16 }}>
+      <Skeleton width={58} height={58} radius={8} style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Skeleton width={100} height={14.5} style={{ marginBottom: 8 }} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} width={70} height={26} radius={999} />)}
+        </div>
+      </div>
+      <Skeleton width={130} height={36} radius={7} />
+    </div>
+  );
+}
+
 export default function ReviewPage() {
-  const { data } = useQuery({ queryKey: ['cows'], queryFn: () => cowsApi.list() });
+  const { data, isLoading } = useQuery({ queryKey: ['cows'], queryFn: () => cowsApi.list() });
   // Once approved, a cow drops off this list entirely - only completed,
   // not-yet-approved analyses need a reviewer's attention.
   const cows = (data?.cows || []).filter(
@@ -228,14 +248,15 @@ export default function ReviewPage() {
         looks right (matching ones highlight together automatically), then Save. Or Override with your own value.
       </p>
 
-      {cows.length === 0 && (
+      {!isLoading && cows.length === 0 && (
         <div style={{ background: '#fff', border: '1px dashed #d8d2c2', borderRadius: 12, padding: 40, textAlign: 'center', color: '#82796a' }}>
           Nothing waiting for review right now.
         </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {cows.map((cow) => <ReviewRow key={cow.cowsId} cow={cow} />)}
+        {isLoading && Array.from({ length: 3 }).map((_, i) => <SkeletonReviewRow key={i} />)}
+        {!isLoading && cows.map((cow) => <ReviewRow key={cow.cowsId} cow={cow} />)}
       </div>
     </div>
   );

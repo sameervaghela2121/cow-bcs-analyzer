@@ -299,6 +299,28 @@ describe('ReviewPage', () => {
     await waitFor(() => expect(screen.queryByText('Cow 4417')).not.toBeInTheDocument());
   });
 
+  it('pressing Override deselects any previously-checked candidate chips, since overriding means agreeing with none of them', async () => {
+    mockCowsAndAnalyses({
+      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
+      analysesByCow: { 4417: [makeAnalysis()] },
+    });
+    renderReview();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+
+    // makeAnalysis() has claude=mean=median=3.25, so clicking Claude checks
+    // all three chips at once (they coincide) - Override should clear all of them.
+    await userEvent.click(screen.getByRole('button', { name: 'Claude: 3.25' }));
+    expect(screen.getByRole('button', { name: 'Claude: 3.25' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Mean: 3.25' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Median: 3.25' })).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(screen.getByRole('button', { name: /override/i }));
+
+    expect(screen.getByRole('button', { name: 'Claude: 3.25' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Mean: 3.25' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Median: 3.25' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('canceling an override discards it without calling PATCH /override', async () => {
     let overrideBody;
     mockCowsAndAnalyses({
