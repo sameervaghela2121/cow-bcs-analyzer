@@ -16,15 +16,17 @@ describe('authService password hashing', () => {
 const { generateAccessToken, generateInviteToken, hashToken } = require('../../src/services/authService');
 
 describe('authService tokens', () => {
-  const fakeUser = { _id: '507f1f77bcf86cd799439011', role: 'staff' };
+  const fakeUser = { _id: '507f1f77bcf86cd799439011', role: 'staff', email: 'staff@example.com', name: 'Staff Person' };
 
-  it('generates an access token carrying the user id and role, with no expiry', () => {
+  it('generates an access token carrying the user id, role, email, and name, with no expiry', () => {
     const jwt = require('jsonwebtoken');
     const config = require('../../src/config/env');
     const token = generateAccessToken(fakeUser);
     const payload = jwt.verify(token, config.jwtAccessSecret);
     expect(payload.sub).toBe(fakeUser._id);
     expect(payload.role).toBe('staff');
+    expect(payload.email).toBe('staff@example.com');
+    expect(payload.name).toBe('Staff Person');
     expect(payload.exp).toBeUndefined();
   });
 

@@ -20,14 +20,14 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const data = await authApi.login(email, password);
-    setTokens({ accessToken: data.accessToken });
+    setTokens({ accessToken: data.accessToken, email: data.user.email });
     setUser(data.user);
     setStatus('authenticated');
   }, []);
 
   const acceptInvite = useCallback(async (email, token, password) => {
     const data = await authApi.acceptInvite(email, token, password);
-    setTokens({ accessToken: data.accessToken });
+    setTokens({ accessToken: data.accessToken, email: data.user.email });
     setUser(data.user);
     setStatus('authenticated');
   }, []);
