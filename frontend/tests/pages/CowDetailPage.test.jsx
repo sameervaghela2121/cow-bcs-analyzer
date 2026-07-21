@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -78,13 +78,20 @@ describe('CowDetailPage', () => {
     );
     renderDetail();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
-    expect(screen.getAllByText(/completed/i).length).toBe(2);
+    // Scoped to each card's own status line (via testid) rather than a page-wide
+    // text search, since the stats bar above also renders a "Completed" label.
+    const statusEls = screen.getAllByTestId('analysis-status');
+    expect(statusEls).toHaveLength(2);
+    expect(statusEls.every((el) => /completed/i.test(el.textContent))).toBe(true);
     // Shows the single overall score (final_bcs once reviewed, medianScore
     // as a live preview before that), not a per-provider breakdown.
     expect(screen.getByText('3.25')).toBeInTheDocument();
     expect(screen.getByText('3.0')).toBeInTheDocument();
-    expect(screen.queryByText(/gemini/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/claude/i)).not.toBeInTheDocument();
+    // The cow detail page (unlike ReviewPage) does show each model's raw
+    // score, alongside "No score" for whichever provider didn't run.
+    expect(screen.getByText('Gemini: 3.25')).toBeInTheDocument();
+    expect(screen.getByText('Claude: 3.0')).toBeInTheDocument();
+    expect(screen.getAllByText('OpenAI: No score')).toHaveLength(2);
   });
 
   it('polls a pending analysis every 10s and stops once it completes', async () => {
@@ -126,7 +133,9 @@ describe('CowDetailPage', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(25000);
     });
-    await waitFor(() => expect(screen.getByText(/^completed$/i)).toBeInTheDocument());
+    // Scoped to the card's status line (via testid), since the stats bar
+    // also renders a "Completed" label elsewhere on the page.
+    await waitFor(() => expect(screen.getByTestId('analysis-status')).toHaveTextContent(/^completed$/i));
     expect(pollCalls).toBeGreaterThanOrEqual(3);
     const callsAtCompletion = pollCalls;
 
@@ -216,9 +225,13 @@ describe('CowDetailPage', () => {
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
 
     // One date heading per distinct day, not one per record - the two Jul 16
-    // records share a single heading and sit in the same row.
-    expect(screen.getByText('Jul 16, 2026')).toBeInTheDocument();
-    expect(screen.getByText('Jul 10, 2026')).toBeInTheDocument();
+    // records share a single heading and sit in the same row. Checked via the
+    // day-heading testid rather than plain text, since each card also shows
+    // its own date badge (and the stats bar's "Last Scan" tile repeats the
+    // newest date too) - all of which would otherwise also match "Jul 16, 2026".
+    const historySection = screen.getByTestId('upload-history-groups');
+    const headings = within(historySection).getAllByTestId('day-heading').map((el) => el.textContent);
+    expect(headings).toEqual(['Jul 16, 2026', 'Jul 10, 2026']);
 
     // All three cards still render, each independently clickable.
     expect(screen.getAllByRole('button', { name: /view 1 photo/i })).toHaveLength(3);
