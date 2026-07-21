@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ImagePlus, UploadCloud, X } from 'lucide-react';
 import { bcsAnalysisApi, putFileToGcs, analyzeBcsRecord } from '../api/bcsAnalysis.js';
+import { cowsApi } from '../api/cows.js';
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const SAFE_COWS_ID = /^[A-Za-z0-9._-]{1,128}$/;
@@ -9,7 +10,7 @@ const EXTENSION_BY_TYPE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp
 
 const PHASE_LABEL = {
   preparing: 'Preparing upload…',
-  uploading: 'Uploading to',
+  uploading: 'Uploading',
   finalizing: 'Saving…',
 };
 
@@ -93,6 +94,10 @@ export default function UploadPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [cowId, setCowId] = useState('');
+  const [selectedCow, setSelectedCow] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchRequestId = useRef(0);
   const [error, setError] = useState(null);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -105,6 +110,45 @@ export default function UploadPage() {
   const uploadedBytes = Object.values(uploadProgress).reduce((sum, p) => sum + p.loaded, 0);
   const totalBytes = Object.values(uploadProgress).reduce((sum, p) => sum + p.total, 0);
   const uploadPercent = totalBytes > 0 ? Math.round((uploadedBytes / totalBytes) * 100) : 0;
+
+  // Debounced cow-ID search: skips while a cow is already locked in, or the
+  // field is empty. searchRequestId guards against a slow earlier response
+  // clobbering a faster later one when the user keeps typing.
+  useEffect(() => {
+    if (selectedCow || locked) return;
+    const query = cowId.trim();
+    if (!query) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const requestId = ++searchRequestId.current;
+    const timer = setTimeout(async () => {
+      try {
+        const { cows } = await cowsApi.list({ search: query, limit: 8 });
+        if (searchRequestId.current === requestId) {
+          setSuggestions(cows);
+          setShowSuggestions(true);
+        }
+      } catch {
+        if (searchRequestId.current === requestId) setSuggestions([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [cowId, selectedCow, locked]);
+
+  function selectCow(cow) {
+    setSelectedCow(cow);
+    setCowId(cow.cowsId);
+    setShowSuggestions(false);
+    setSuggestions([]);
+  }
+
+  function clearSelectedCow() {
+    setSelectedCow(null);
+    setCowId('');
+    setShowSuggestions(false);
+  }
 
   function handleFiles(fileList) {
     const incoming = Array.from(fileList);
@@ -217,18 +261,72 @@ export default function UploadPage() {
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '36px 28px 60px' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Upload BCS Reading</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Upload Photoes</h1>
       <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 24px' }}>
-        Upload one or more photos of the same cow — they'll be scored together as a single reading.
+        Upload one or more photos of the same cow
       </p>
 
       <div style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 14, padding: 24 }}>
-        <label htmlFor="upload-cow-id" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Cow ID</label>
-        <input
-          id="upload-cow-id" value={cowId} onChange={(e) => setCowId(e.target.value)} disabled={locked}
-          placeholder="e.g. 4417"
-          style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', fontSize: 16, border: '1px solid #d8d2c2', borderRadius: 8, marginBottom: 20 }}
-        />
+        <label htmlFor="upload-cow-id" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+          Cow ID (search or enter new)
+        </label>
+
+        {selectedCow ? (
+          <div style={{ marginBottom: 20 }}>
+            <div
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+                border: '1px solid #cfe0cf', borderRadius: 8, background: '#eef4ee', fontSize: 15, fontWeight: 700, color: '#1c2a20',
+              }}
+            >
+              <span>Cow #{selectedCow.cowsId}</span>
+              {!locked && (
+                <button
+                  onClick={clearSelectedCow}
+                  title="Clear"
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: '#1c2a20' }}
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ position: 'relative', marginBottom: 20 }}>
+            <input
+              id="upload-cow-id" value={cowId} onChange={(e) => setCowId(e.target.value)} disabled={locked}
+              onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+              onBlur={() => setShowSuggestions(false)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setShowSuggestions(false); }}
+              placeholder="e.g. 4417"
+              autoComplete="off"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', fontSize: 16, border: '1px solid #d8d2c2', borderRadius: 8 }}
+            />
+            {showSuggestions && suggestions.length > 0 && (
+              <div
+                style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: '#fff',
+                  border: '1px solid #d8d2c2', borderRadius: 8, boxShadow: '0 4px 12px rgba(28,42,32,0.12)', zIndex: 10,
+                  maxHeight: 220, overflowY: 'auto',
+                }}
+              >
+                {suggestions.map((cow, i) => (
+                  <div
+                    key={cow.id}
+                    // onMouseDown (not onClick) fires before the input's onBlur closes the dropdown.
+                    onMouseDown={(e) => { e.preventDefault(); selectCow(cow); }}
+                    style={{
+                      padding: '10px 14px', fontSize: 14.5, cursor: 'pointer',
+                      borderBottom: i === suggestions.length - 1 ? 'none' : '1px solid #f0ede2',
+                    }}
+                  >
+                    Cow - {cow.cowsId}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <div style={{ background: '#fbe4e4', color: '#b91c1c', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 16 }}>{error}</div>}
 
@@ -287,7 +385,7 @@ export default function UploadPage() {
             disabled={submitting}
             style={{ width: '100%', padding: '13px 20px', borderRadius: 8, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, marginTop: 20 }}
           >
-            Score {pendingFiles.length} photo{pendingFiles.length === 1 ? '' : 's'}
+            Upload Photos
           </button>
         )}
 

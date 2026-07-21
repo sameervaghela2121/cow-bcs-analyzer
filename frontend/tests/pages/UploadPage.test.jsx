@@ -6,7 +6,12 @@ import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import UploadPage from '../../src/pages/UploadPage.jsx';
 
-const server = setupServer();
+// Default handler for the cow-ID search-as-you-type lookup so tests that
+// don't care about it (most of them) don't trip the strict
+// onUnhandledRequest: 'error' setting below.
+const server = setupServer(
+  http.get('http://localhost:4000/api/cows', () => HttpResponse.json({ cows: [], total: 0 }))
+);
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -36,7 +41,7 @@ describe('UploadPage', () => {
     const file = new File(['fake-bytes'], 'cow.jpg', { type: 'image/jpeg' });
     const input = screen.getByLabelText(/choose file/i, { selector: 'input' });
     await user.upload(input, file);
-    await user.click(screen.getByRole('button', { name: /score 1 photo/i }));
+    await user.click(screen.getByRole('button', { name: /upload photos/i }));
     expect(screen.getByText(/enter a cow id/i)).toBeInTheDocument();
   });
 
@@ -89,7 +94,7 @@ describe('UploadPage', () => {
     const fileB = new File(['fake-bytes-b'], 'cow-b.jpg', { type: 'image/jpeg' });
     await user.upload(input, [fileA, fileB]);
 
-    await user.click(screen.getByRole('button', { name: /score 2 photos/i }));
+    await user.click(screen.getByRole('button', { name: /upload photos/i }));
 
     await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
 
@@ -134,7 +139,7 @@ describe('UploadPage', () => {
     const fileA = new File(['a'], 'cow side view.jpg', { type: 'image/jpeg' });
     const fileB = new File(['b'], 'cow (side) view.jpg', { type: 'image/jpeg' });
     await user.upload(input, [fileA, fileB]);
-    await user.click(screen.getByRole('button', { name: /score 2 photos/i }));
+    await user.click(screen.getByRole('button', { name: /upload photos/i }));
 
     await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
 
@@ -171,7 +176,7 @@ describe('UploadPage', () => {
     const input = screen.getByLabelText(/choose file/i, { selector: 'input' });
     const file = new File(['fake-bytes'], 'cow.jpg', { type: 'image/jpeg' });
     await user.upload(input, file);
-    await user.click(screen.getByRole('button', { name: /score 1 photo/i }));
+    await user.click(screen.getByRole('button', { name: /upload photos/i }));
 
     await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
   });
@@ -182,7 +187,7 @@ describe('UploadPage', () => {
     const input = screen.getByLabelText(/choose file/i, { selector: 'input' });
     const file = new File(['fake-bytes'], 'cow.jpg', { type: 'image/jpeg' });
     await user.upload(input, file);
-    await user.click(screen.getByRole('button', { name: /score 1 photo/i }));
+    await user.click(screen.getByRole('button', { name: /upload photos/i }));
     expect(await screen.findByText(/may only contain letters, numbers/i)).toBeInTheDocument();
   });
 });
