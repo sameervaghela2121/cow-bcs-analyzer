@@ -7,6 +7,16 @@ import { usePollBcsAnalysis } from '../hooks/usePollBcsAnalysis.js';
 import { statusLabel, statusColor, PENDING_STATUSES } from '../domain/analysisStatus.js';
 import { formatScore, bandFor, PROVIDERS, PROVIDER_LABELS } from '../domain/bcs.js';
 import Skeleton from '../components/Skeleton.jsx';
+import { Button, PageHeader } from '../components/ui/index.js';
+import { color, radius, shadow, status, softTint, transition } from '../styles/tokens.js';
+
+const cardShellStyle = {
+  background: color.bgCard,
+  border: `1px solid ${color.borderCard}`,
+  borderRadius: radius.card,
+  boxShadow: shadow.card,
+  overflow: 'hidden',
+};
 
 function fmtDate(iso) {
   const d = new Date(iso);
@@ -79,14 +89,14 @@ function Lightbox({ images, fallbackImages, index, onClose, onNavigate }) {
   const iconButtonStyle = {
     width: 46, height: 46, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.12)',
     color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 2px 14px rgba(0,0,0,0.35)', backdropFilter: 'blur(6px)',
+    boxShadow: shadow.raised, backdropFilter: 'blur(6px)', transition,
   };
 
   return (
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(8,10,8,0.92)', backdropFilter: 'blur(3px)',
+        position: 'fixed', inset: 0, background: 'rgba(10,12,10,0.92)', backdropFilter: 'blur(3px)',
         zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       }}
     >
@@ -125,7 +135,7 @@ function Lightbox({ images, fallbackImages, index, onClose, onNavigate }) {
             onError={() => setFailedIndices((prev) => new Set(prev).add(index))}
             style={{
               position: 'absolute', maxWidth: '100%', maxHeight: '100%', borderRadius: 10, objectFit: 'contain',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.4)', opacity: ready ? 1 : 0, transition: 'opacity 0.2s ease',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.4)', opacity: ready ? 1 : 0, transition: 'opacity 200ms ease',
             }}
           />
         )}
@@ -145,7 +155,7 @@ function Lightbox({ images, fallbackImages, index, onClose, onNavigate }) {
         <div
           style={{
             marginTop: 20, color: '#fff', fontSize: 13, fontWeight: 700, background: 'rgba(255,255,255,0.14)',
-            borderRadius: 999, padding: '6px 16px', backdropFilter: 'blur(6px)',
+            borderRadius: radius.chip, padding: '6px 16px', backdropFilter: 'blur(6px)',
           }}
         >
           {index + 1} / {images.length}
@@ -182,7 +192,7 @@ function ScoreBadge({ score }) {
   return (
     <div style={{ textAlign: 'right' }}>
       <div style={{ fontSize: 23, fontWeight: 800, color: band.color }}>{formatScore(score)}</div>
-      <div style={{ fontSize: 12, color: '#82796a' }}>{band.label}</div>
+      <div style={{ fontSize: 12, color: color.textSecondary }}>{band.label}</div>
     </div>
   );
 }
@@ -195,9 +205,9 @@ function ModelScoreChip({ label, value }) {
   return (
     <div
       style={{
-        flex: 1, textAlign: 'center', padding: '8px 10px', borderRadius: 10, fontSize: 12.5, fontWeight: 600,
-        border: '1px solid #e5e0d3', background: '#faf9f5',
-        color: available ? '#3a3324' : '#b7b0a0',
+        flex: 1, textAlign: 'center', padding: '8px 10px', borderRadius: radius.sm, fontSize: 12.5, fontWeight: 600,
+        border: `1px solid ${color.borderCard}`, background: color.bgPage,
+        color: available ? color.textPrimary : color.textMuted,
       }}
     >
       {label}: {available ? formatScore(value) : 'No score'}
@@ -238,14 +248,14 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
   }
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 14, overflow: 'hidden' }}>
+    <div style={cardShellStyle}>
       <div
         onClick={openGallery}
         role={hasImages ? 'button' : undefined}
         tabIndex={hasImages ? 0 : undefined}
         aria-label={hasImages ? `View ${imageUrls.length} photo${imageUrls.length === 1 ? '' : 's'}` : undefined}
         onKeyDown={(e) => { if (hasImages && (e.key === 'Enter' || e.key === ' ')) openGallery(); }}
-        style={{ position: 'relative', height: 230, background: '#f2f0e8', cursor: hasImages ? 'pointer' : 'default' }}
+        style={{ position: 'relative', height: 230, background: color.hover, cursor: hasImages ? 'pointer' : 'default' }}
       >
         {coverSrc && (
           <img
@@ -258,14 +268,14 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
         <div
           style={{
             position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 5,
-            background: 'rgba(255,255,255,0.94)', color: '#3c372c', fontSize: 12.5, fontWeight: 700,
-            borderRadius: 8, padding: '5px 10px',
+            background: 'rgba(255,255,255,0.94)', color: color.textPrimary, fontSize: 12.5, fontWeight: 700,
+            borderRadius: radius.sm, padding: '5px 10px',
           }}
         >
           <CalendarDays size={13} /> {fmtDateTimeIST(analysis.createdAt)}
         </div>
         {extra > 0 && (
-          <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, fontWeight: 700, borderRadius: 8, padding: '3px 8px' }}>
+          <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(17,24,39,0.65)', color: '#fff', fontSize: 13, fontWeight: 700, borderRadius: radius.sm, padding: '3px 8px' }}>
             +{extra}
           </div>
         )}
@@ -285,20 +295,20 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); navigate('/review'); } }}
                 title="Go to Review"
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 5, padding: '2px 8px',
-                  borderRadius: 999, fontSize: 11, fontWeight: 700, color: '#a35a05', background: '#fdf1de',
-                  cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '3px 9px',
+                  borderRadius: radius.chip, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  ...softTint(status.attention),
                 }}
               >
                 <Clock size={11} /> Review Pending
               </div>
             )}
             {analysis.status === 'completed' && (
-              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: '#5c5646' }}>
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: color.textSecondary }}>
                   Mean: {analysis.meanScore != null ? formatScore(analysis.meanScore) : '—'}
                 </div>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: '#5c5646' }}>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: color.textSecondary }}>
                   Median: {analysis.medianScore != null ? formatScore(analysis.medianScore) : '—'}
                 </div>
               </div>
@@ -307,7 +317,7 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
           {analysis.status === 'completed' && displayScore != null && (
             <div style={{ textAlign: 'right' }}>
               <ScoreBadge score={displayScore} />
-              <div style={{ fontSize: 11, color: '#82796a', marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: color.textMuted, marginTop: 2 }}>
                 {hasFinal ? 'Final score' : 'Median'}
               </div>
             </div>
@@ -315,7 +325,7 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
         </div>
 
         {analysis.status === 'completed' && (
-          <div style={{ display: 'flex', gap: 12, marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0ede2' }}>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16, paddingTop: 16, borderTop: `1px solid ${color.borderCard}` }}>
             {PROVIDERS.map((key) => {
               const assessment = analysis.bcsScore?.[key];
               const value = assessment?.status === 'success' ? assessment.final_bcs : null;
@@ -332,13 +342,13 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
 // page.
 function StatCard({ icon: Icon, value, label }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 28px', flex: 1, minWidth: 0 }}>
-      <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#eef4ee', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <Icon size={20} color="#166534" />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '20px 28px', flex: 1, minWidth: 0 }}>
+      <div style={{ width: 44, height: 44, borderRadius: '50%', background: color.primarySoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={20} color={color.primaryDark} strokeWidth={1.75} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 21, fontWeight: 800, color: '#1c2a20', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{value}</div>
-        <div style={{ fontSize: 12.5, color: '#82796a' }}>{label}</div>
+        <div style={{ fontSize: 21, fontWeight: 800, color: color.textPrimary, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{value}</div>
+        <div style={{ fontSize: 12.5, color: color.textSecondary }}>{label}</div>
       </div>
     </div>
   );
@@ -361,15 +371,15 @@ export default function CowDetailPage() {
   if (!cow) {
     return (
       <div style={{ padding: '28px 32px 60px' }}>
-        <Skeleton width={70} height={14} style={{ marginBottom: 18 }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 22 }}>
+        <Skeleton width={70} height={14} style={{ marginBottom: 20 }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 28 }}>
           <div>
-            <Skeleton width={160} height={26} style={{ marginBottom: 8 }} />
-            <Skeleton width={240} height={13.5} />
+            <Skeleton width={200} height={32} style={{ marginBottom: 8 }} />
+            <Skeleton width={260} height={14} />
           </div>
-          <Skeleton width={160} height={42} radius={8} />
+          <Skeleton width={170} height={44} radius={radius.button} />
         </div>
-        <div style={{ display: 'flex', background: '#fff', border: '1px solid #e5e0d3', borderRadius: 14, marginBottom: 30, padding: '18px 28px', gap: 40 }}>
+        <div style={{ display: 'flex', ...cardShellStyle, marginBottom: 32, padding: '20px 28px', gap: 40 }}>
           {[0, 1, 2].map((i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <Skeleton width={44} height={44} radius={999} />
@@ -380,17 +390,17 @@ export default function CowDetailPage() {
             </div>
           ))}
         </div>
-        <Skeleton width={140} height={17} style={{ marginBottom: 16 }} />
+        <Skeleton width={140} height={18} style={{ marginBottom: 18 }} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(370px, 1fr))', gap: 20 }}>
           {[0, 1].map((i) => (
-            <div key={i} style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 14, overflow: 'hidden' }}>
+            <div key={i} style={cardShellStyle}>
               <Skeleton height={380} radius={0} />
               <div style={{ padding: '16px 18px 14px' }}>
                 <Skeleton width={90} height={13.5} style={{ marginBottom: 16 }} />
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <Skeleton height={34} radius={10} style={{ flex: 1 }} />
-                  <Skeleton height={34} radius={10} style={{ flex: 1 }} />
-                  <Skeleton height={34} radius={10} style={{ flex: 1 }} />
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <Skeleton height={34} radius={radius.sm} style={{ flex: 1 }} />
+                  <Skeleton height={34} radius={radius.sm} style={{ flex: 1 }} />
+                  <Skeleton height={34} radius={radius.sm} style={{ flex: 1 }} />
                 </div>
               </div>
             </div>
@@ -402,40 +412,43 @@ export default function CowDetailPage() {
 
   return (
     <div style={{ padding: '28px 32px 60px' }}>
-      <div onClick={() => navigate(-1)} style={{ cursor: 'pointer', color: '#166534', fontWeight: 600, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div
+        onClick={() => navigate(-1)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(-1); }}
+        style={{ cursor: 'pointer', color: color.primary, fontWeight: 600, fontSize: 13.5, marginBottom: 20, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+      >
         <ArrowLeft size={16} /> Back
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 22 }}>
-        <div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 6px' }}>Cow {cow.cowsId}</h1>
-          <p style={{ fontSize: 13.5, color: '#82796a', margin: 0 }}>Track and manage upload history for this cow</p>
-        </div>
-        <button
-          onClick={() => navigate('/upload')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '11px 18px', borderRadius: 8, border: 'none', background: '#1c2a20', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
-        >
-          <Plus size={16} /> Upload New Data
-        </button>
-      </div>
+      <PageHeader
+        title={`Cow ${cow.cowsId}`}
+        subtitle="Track and manage upload history for this cow"
+        actions={
+          <Button onClick={() => navigate('/upload')} icon={Plus}>
+            Upload New Data
+          </Button>
+        }
+      />
 
-      <div data-testid="cow-stats" style={{ display: 'flex', background: '#fff', border: '1px solid #e5e0d3', borderRadius: 14, marginBottom: 30 }}>
+      <div data-testid="cow-stats" style={{ display: 'flex', ...cardShellStyle, marginBottom: 32 }}>
         <StatCard icon={ClipboardList} value={analyses.length} label="Total Uploads" />
-        <div style={{ width: 1, background: '#eee8d8', margin: '18px 0' }} />
+        <div style={{ width: 1, background: color.borderCard, margin: '18px 0' }} />
         <StatCard icon={CheckCircle2} value={completedCount} label="Completed" />
-        <div style={{ width: 1, background: '#eee8d8', margin: '18px 0' }} />
+        <div style={{ width: 1, background: color.borderCard, margin: '18px 0' }} />
         <StatCard icon={CalendarDays} value={lastScanLabel} label="Last Scan" />
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 17, fontWeight: 800 }}>Upload History</div>
-        <div style={{ fontSize: 13, color: '#82796a', marginTop: 2 }}>All uploads and their completion scores</div>
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: color.textPrimary }}>Upload History</div>
+        <div style={{ fontSize: 13, color: color.textSecondary, marginTop: 2 }}>All uploads and their completion scores</div>
       </div>
-      {analyses.length === 0 && <div style={{ fontSize: 13, color: '#82796a' }}>No uploads yet.</div>}
+      {analyses.length === 0 && <div style={{ fontSize: 13, color: color.textSecondary }}>No uploads yet.</div>}
       <div data-testid="upload-history-groups">
         {groupByDate(analyses).map((group) => (
-          <div key={group.key} style={{ marginBottom: 30 }}>
-            <div data-testid="day-heading" style={{ fontSize: 14, fontWeight: 700, color: '#82796a', marginBottom: 12 }}>{group.key}</div>
+          <div key={group.key} style={{ marginBottom: 32 }}>
+            <div data-testid="day-heading" style={{ fontSize: 14, fontWeight: 700, color: color.textSecondary, marginBottom: 14 }}>{group.key}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(370px, 1fr))', gap: 20 }}>
               {group.items.map((a) => (
                 <AnalysisCard

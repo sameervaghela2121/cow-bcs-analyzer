@@ -1,3 +1,5 @@
+import { status } from '../styles/tokens.js';
+
 export const STATUS_LABEL = {
   not_started: 'Waiting to start',
   processing: 'Processing…',
@@ -6,18 +8,18 @@ export const STATUS_LABEL = {
 };
 
 export const STATUS_COLOR = {
-  not_started: '#82796a',
-  processing: '#82796a',
-  completed: '#166534',
-  failed: '#b91c1c',
+  not_started: status.neutral,
+  processing: status.information,
+  completed: status.healthy,
+  failed: status.critical,
 };
 
 export const PENDING_STATUSES = new Set(['not_started', 'processing']);
 
-export function statusLabel(status) {
-  return STATUS_LABEL[status] || status;
+export function statusLabel(statusKey) {
+  return STATUS_LABEL[statusKey] || statusKey;
 }
 
-export function statusColor(status) {
-  return STATUS_COLOR[status] || '#82796a';
+export function statusColor(statusKey) {
+  return STATUS_COLOR[statusKey] || STATUS_COLOR.not_started;
 }

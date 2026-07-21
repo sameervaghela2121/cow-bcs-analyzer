@@ -10,31 +10,40 @@ import {
   reviewerAgreementStats, modelInfluenceStats, scoreTrend, cowsNeedingAttention, scoreVolatility, reviewBacklog,
 } from '../domain/dashboardStats.js';
 import { bandFor, formatScore } from '../domain/bcs.js';
-import { statusLabel, statusColor } from '../domain/analysisStatus.js';
+import { statusColor } from '../domain/analysisStatus.js';
 import Skeleton from '../components/Skeleton.jsx';
+import { Card, PageHeader, StatusChip } from '../components/ui/index.js';
+import { color, chart, status, font, radius, softTint } from '../styles/tokens.js';
 
-const card = { background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, padding: '18px 20px' };
-const cardTitle = { fontSize: 13.5, fontWeight: 700, margin: '0 0 14px' };
+const cardTitle = { fontSize: 15, fontWeight: font.weight.semibold, color: color.textPrimary, margin: '0 0 16px' };
 const PROVIDER_LABEL = {
   claude: 'Claude', gemini: 'Gemini', openai: 'OpenAI',
   median: 'Median', mean: 'Mean', override: 'Override', unattributed: 'Unattributed',
 };
+// One hue per meaning, restrained rather than a rainbow: the two AI-model
+// colors sit in the purple/blue/teal family (claude gets the AI accent
+// itself since it's the flagship model), mean is a deeper violet so it
+// reads related to-but-distinct-from claude's AI accent, median stays
+// neutral (it's arithmetic, not a model), override borrows the same amber
+// "a human stepped in" language used everywhere else in the app.
 const PROVIDER_COLOR = {
-  claude: '#b45309', gemini: '#1d4ed8', openai: '#166534',
-  median: '#6b6155', mean: '#7c3aed', override: '#9a1c1c', unattributed: '#9a9280',
+  claude: color.ai, gemini: chart.milk, openai: chart.water,
+  median: status.neutral, mean: color.aiDeep, override: status.attention, unattributed: status.neutral,
 };
 const STATUS_LABEL_SHORT = { not_started: 'Not started', processing: 'Processing', completed: 'Completed', failed: 'Failed' };
 // One representative score per band, resolved through bandFor itself so
 // these colors can never drift from the ones CowDetailPage/ReviewPage use.
 const BAND_COLOR = { thin: bandFor(2).color, ideal: bandFor(3).color, heavy: bandFor(4).color, unscored: bandFor(null).color };
 
+const axisTick = { fontSize: 12, fill: chart.axis };
+
 function StatTile({ label, value, sub }) {
   return (
-    <div style={card}>
-      <div style={{ fontSize: 12.5, color: '#82796a', fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 800, margin: '6px 0 2px' }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: '#9a9280' }}>{sub}</div>}
-    </div>
+    <Card padding="20px 24px">
+      <div style={{ fontSize: 12.5, color: color.textSecondary, fontWeight: font.weight.semibold, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: font.size.pageTitle, fontWeight: font.weight.bold, color: color.textPrimary, margin: '8px 0 2px', letterSpacing: -0.5 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12.5, color: color.textMuted }}>{sub}</div>}
+    </Card>
   );
 }
 
@@ -46,41 +55,41 @@ function DistributionChart({ distribution }) {
     { key: 'unscored', label: 'Unscored', count: distribution.unscored },
   ];
   return (
-    <div style={card}>
+    <Card>
       <h3 style={cardTitle}>BCS Distribution (latest per cow)</h3>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data} margin={{ left: -20 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e0d3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#82796a' }} axisLine={{ stroke: '#e5e0d3' }} tickLine={false} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#82796a' }} axisLine={false} tickLine={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+          <XAxis dataKey="label" tick={axisTick} axisLine={{ stroke: chart.grid }} tickLine={false} />
+          <YAxis allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} />
           <Tooltip formatter={(value) => [`${value} cows`, 'Count']} />
           <Bar dataKey="count" radius={[6, 6, 0, 0]}>
             {data.map((d) => <Cell key={d.key} fill={BAND_COLOR[d.key]} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </Card>
   );
 }
 
 function TrendChart({ trend }) {
   return (
-    <div style={card}>
+    <Card>
       <h3 style={cardTitle}>Herd Avg BCS Trend (by week)</h3>
       {trend.length === 0 ? (
-        <div style={{ fontSize: 13, color: '#82796a', padding: '40px 0', textAlign: 'center' }}>Not enough data yet.</div>
+        <div style={{ fontSize: 13, color: color.textSecondary, padding: '40px 0', textAlign: 'center' }}>Not enough data yet.</div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={trend} margin={{ left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e0d3" vertical={false} />
-            <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#82796a' }} axisLine={{ stroke: '#e5e0d3' }} tickLine={false} />
-            <YAxis domain={[1, 5]} tick={{ fontSize: 12, fill: '#82796a' }} axisLine={false} tickLine={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+            <XAxis dataKey="week" tick={{ fontSize: 11, fill: chart.axis }} axisLine={{ stroke: chart.grid }} tickLine={false} />
+            <YAxis domain={[1, 5]} tick={axisTick} axisLine={false} tickLine={false} />
             <Tooltip formatter={(value) => [formatScore(value), 'Avg BCS']} />
-            <Line type="monotone" dataKey="avgScore" stroke="#166534" strokeWidth={2.5} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="avgScore" stroke={chart.health} strokeWidth={2.5} dot={{ r: 3, fill: chart.health, strokeWidth: 0 }} />
           </LineChart>
         </ResponsiveContainer>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -93,18 +102,18 @@ function TrendChart({ trend }) {
 function ProviderChart({ agreement, reviewedCount }) {
   const data = agreement.map((a) => ({ ...a, label: PROVIDER_LABEL[a.key] }));
   return (
-    <div style={card}>
+    <Card>
       <h3 style={cardTitle}>Reviewer Agreement by Source {reviewedCount > 0 && `(of ${reviewedCount} reviewed)`}</h3>
       {reviewedCount === 0 ? (
-        <div style={{ fontSize: 13, color: '#82796a', padding: '40px 0', textAlign: 'center' }}>
+        <div style={{ fontSize: 13, color: color.textSecondary, padding: '40px 0', textAlign: 'center' }}>
           No reviews yet — this fills in as cows get approved/overridden.
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data} margin={{ left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e0d3" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#82796a' }} axisLine={{ stroke: '#e5e0d3' }} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#82796a' }} axisLine={false} tickLine={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+            <XAxis dataKey="label" tick={axisTick} axisLine={{ stroke: chart.grid }} tickLine={false} />
+            <YAxis allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} />
             <Tooltip
               formatter={(value, _name, item) => [`${value} of ${reviewedCount} (${Math.round(item.payload.rate * 100)}%)`, 'Selected']}
             />
@@ -114,9 +123,7 @@ function ProviderChart({ agreement, reviewedCount }) {
           </BarChart>
         </ResponsiveContainer>
       )}
-      <div style={{ fontSize: 11, color: '#9a9280', marginTop: 10, lineHeight: 1.4 }}>
-      </div>
-    </div>
+    </Card>
   );
 }
 
@@ -129,18 +136,18 @@ function ProviderChart({ agreement, reviewedCount }) {
 function ModelInfluenceChart({ influence, reviewedCount }) {
   const data = influence.map((i) => ({ ...i, label: PROVIDER_LABEL[i.key] }));
   return (
-    <div style={card}>
+    <Card>
       <h3 style={cardTitle}>Model Influence {reviewedCount > 0 && `(of ${reviewedCount} reviewed)`}</h3>
       {reviewedCount === 0 ? (
-        <div style={{ fontSize: 13, color: '#82796a', padding: '40px 0', textAlign: 'center' }}>
+        <div style={{ fontSize: 13, color: color.textSecondary, padding: '40px 0', textAlign: 'center' }}>
           No reviews yet — this fills in as cows get approved/overridden.
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data} margin={{ left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e0d3" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#82796a' }} axisLine={{ stroke: '#e5e0d3' }} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#82796a' }} axisLine={false} tickLine={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+            <XAxis dataKey="label" tick={axisTick} axisLine={{ stroke: chart.grid }} tickLine={false} />
+            <YAxis allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} />
             <Tooltip
               formatter={(value, _name, item) => [`${value} of ${reviewedCount} (${Math.round(item.payload.rate * 100)}%)`, 'Final score from']}
             />
@@ -150,60 +157,55 @@ function ModelInfluenceChart({ influence, reviewedCount }) {
           </BarChart>
         </ResponsiveContainer>
       )}
-      <div style={{ fontSize: 11, color: '#9a9280', marginTop: 10, lineHeight: 1.4 }}>
-      </div>
-    </div>
+    </Card>
   );
 }
 
 function PipelineChart({ counts }) {
-  const data = Object.entries(counts).map(([status, count]) => ({ status, label: STATUS_LABEL_SHORT[status], count }));
+  const data = Object.entries(counts).map(([statusKey, count]) => ({ status: statusKey, label: STATUS_LABEL_SHORT[statusKey], count }));
   return (
-    <div style={card}>
+    <Card>
       <h3 style={cardTitle}>Analyses by Pipeline Status</h3>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data} margin={{ left: -20 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e0d3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#82796a' }} axisLine={{ stroke: '#e5e0d3' }} tickLine={false} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#82796a' }} axisLine={false} tickLine={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+          <XAxis dataKey="label" tick={axisTick} axisLine={{ stroke: chart.grid }} tickLine={false} />
+          <YAxis allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} />
           <Tooltip formatter={(value) => [`${value} analyses`, 'Count']} />
           <Bar dataKey="count" radius={[6, 6, 0, 0]}>
             {data.map((d) => <Cell key={d.status} fill={statusColor(d.status)} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </Card>
   );
 }
 
 function AttentionList({ items, navigate }) {
   const REASON_LABEL = { thin: 'Too thin', heavy: 'Too heavy', failed: 'Latest upload failed' };
   return (
-    <div style={card}>
+    <Card>
       <h3 style={cardTitle}>Cows Needing Attention</h3>
       {items.length === 0 ? (
-        <div style={{ fontSize: 13, color: '#82796a' }}>Nothing flagged — herd looks good.</div>
+        <div style={{ fontSize: 13, color: color.textSecondary }}>Nothing flagged — herd looks good.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {items.map(({ cow, reason, band }) => (
             <div
               key={cow.cowsId}
               onClick={() => navigate(`/herd/${cow.cowsId}`)}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e0d3' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '10px 12px', borderRadius: radius.sm, border: `1px solid ${color.borderCard}` }}
             >
-              <div style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>Cow {cow.cowsId}</div>
-              <span style={{
-                fontSize: 11.5, fontWeight: 700, padding: '4px 9px', borderRadius: 999,
-                color: reason === 'failed' ? '#b91c1c' : band.color,
-                background: reason === 'failed' ? '#fdeaea' : band.bg,
-              }}>
-                {REASON_LABEL[reason]}
-              </span>
+              <div style={{ flex: 1, fontSize: 13.5, fontWeight: font.weight.semibold, color: color.textPrimary }}>Cow {cow.cowsId}</div>
+              <StatusChip
+                label={REASON_LABEL[reason]}
+                style={reason === 'failed' ? softTint(status.critical) : { color: band.color, background: band.bg }}
+              />
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -216,33 +218,33 @@ function VolatilityList({ items, navigate }) {
   const gainedColor = bandFor(4).color;
   const lostColor = bandFor(2).color;
   return (
-    <div style={card}>
+    <Card>
       <h3 style={cardTitle}>Score Volatility</h3>
       {items.length === 0 ? (
-        <div style={{ fontSize: 13, color: '#82796a' }}>No significant swings — herd is stable.</div>
+        <div style={{ fontSize: 13, color: color.textSecondary }}>No significant swings — herd is stable.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {items.map(({ cow, previousScore, latestScore, delta }) => {
             const gained = delta > 0;
-            const color = gained ? gainedColor : lostColor;
+            const deltaColor = gained ? gainedColor : lostColor;
             return (
               <div
                 key={cow.cowsId}
                 onClick={() => navigate(`/herd/${cow.cowsId}`)}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e0d3' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '10px 12px', borderRadius: radius.sm, border: `1px solid ${color.borderCard}` }}
               >
-                <div style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>Cow {cow.cowsId}</div>
-                <div style={{ fontSize: 12.5, color: '#82796a' }}>{formatScore(previousScore)} → {formatScore(latestScore)}</div>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11.5, fontWeight: 700, padding: '4px 9px', borderRadius: 999, color, background: gained ? bandFor(4).bg : bandFor(2).bg }}>
-                  {gained ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-                  {formatScore(Math.abs(delta))}
-                </span>
+                <div style={{ flex: 1, fontSize: 13.5, fontWeight: font.weight.semibold, color: color.textPrimary }}>Cow {cow.cowsId}</div>
+                <div style={{ fontSize: 12.5, color: color.textSecondary }}>{formatScore(previousScore)} → {formatScore(latestScore)}</div>
+                <StatusChip
+                  label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>{gained ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{formatScore(Math.abs(delta))}</span>}
+                  style={{ color: deltaColor, background: gained ? bandFor(4).bg : bandFor(2).bg }}
+                />
               </div>
             );
           })}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -269,25 +271,24 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div style={{ padding: '32px 28px 60px' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Dashboard</h1>
-        <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 22px' }}>Herd health and AI review activity at a glance.</p>
+      <div style={{ padding: '32px 32px 60px' }}>
+        <PageHeader title="Dashboard" subtitle="Herd health and AI review activity at a glance." />
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px,1fr))', gap: 14, marginBottom: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px,1fr))', gap: 16, marginBottom: 20 }}>
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} style={card}>
-              <Skeleton width={80} height={12.5} style={{ marginBottom: 10 }} />
-              <Skeleton width={50} height={28} />
-            </div>
+            <Card key={i} padding="20px 24px">
+              <Skeleton width={80} height={12.5} style={{ marginBottom: 12 }} />
+              <Skeleton width={60} height={30} />
+            </Card>
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px,1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px,1fr))', gap: 20 }}>
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} style={card}>
-              <Skeleton width={200} height={13.5} style={{ marginBottom: 14 }} />
+            <Card key={i}>
+              <Skeleton width={200} height={13.5} style={{ marginBottom: 16 }} />
               <Skeleton height={220} radius={8} />
-            </div>
+            </Card>
           ))}
         </div>
       </div>
@@ -295,18 +296,17 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ padding: '32px 28px 60px' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Dashboard</h1>
-      <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 22px' }}>Herd health and AI review activity at a glance.</p>
+    <div style={{ padding: '32px 32px 60px' }}>
+      <PageHeader title="Dashboard" subtitle="Herd health and AI review activity at a glance." />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px,1fr))', gap: 14, marginBottom: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px,1fr))', gap: 16, marginBottom: 20 }}>
         <StatTile label="Herd size" value={cows.length} />
         <StatTile label="Herd avg BCS" value={formatScore(herdAvgScore)} sub={herdAvgScore == null ? undefined : bandFor(herdAvgScore).label} />
         <StatTile label="Pending review" value={pendingReview.length} />
         <StatTile label="In pipeline" value={pipelineCounts.not_started + pipelineCounts.processing} sub="not started + processing" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px,1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px,1fr))', gap: 20 }}>
         <DistributionChart distribution={distribution} />
         <TrendChart trend={trend} />
         <ProviderChart agreement={agreement} reviewedCount={reviewedCount} />

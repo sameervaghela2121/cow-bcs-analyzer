@@ -33,9 +33,10 @@ export function ToastProvider({ children }) {
             role="status"
             onClick={() => dismiss(t.id)}
             style={{
-              padding: '12px 16px', borderRadius: 8, fontSize: '13.5px', fontWeight: 600, color: '#fff', cursor: 'pointer',
-              background: t.type === 'error' ? '#b91c1c' : '#166534',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.18)', minWidth: 240, maxWidth: 380,
+              padding: '12px 16px', borderRadius: 12, fontSize: '13.5px', fontWeight: 600, color: '#fff', cursor: 'pointer',
+              background: t.type === 'error' ? '#D32F2F' : '#1B5E20',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.16)', minWidth: 240, maxWidth: 380,
+              animation: 'bcs-fade-in 200ms ease',
             }}
           >
             {t.message}

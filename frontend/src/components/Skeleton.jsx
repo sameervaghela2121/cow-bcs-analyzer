@@ -8,7 +8,7 @@ export default function Skeleton({ width = '100%', height = 14, radius = 6, styl
         width,
         height,
         borderRadius: radius,
-        background: 'linear-gradient(90deg, #ece8dc 25%, #f6f4ec 37%, #ece8dc 63%)',
+        background: 'linear-gradient(90deg, #ECEDEF 25%, #F5F6F7 37%, #ECEDEF 63%)',
         backgroundSize: '640px 100%',
         animation: 'bcs-shimmer 1.4s ease-in-out infinite',
         ...style,

@@ -1,15 +1,21 @@
+import { color, status, softTint } from '../styles/tokens.js';
+
 export function bandFor(score) {
-  if (score == null) return { key: 'unscored', label: 'Not yet scored', color: '#82796a', bg: '#efece1' };
-  if (score < 2.5) return { key: 'thin', label: 'Too thin', color: '#b45309', bg: '#fbeedd' };
-  if (score <= 3.75) return { key: 'ideal', label: 'Ideal', color: '#166534', bg: '#e6f2e8' };
-  return { key: 'heavy', label: 'Too heavy', color: '#1d4ed8', bg: '#e8edfc' };
+  if (score == null) return { key: 'unscored', label: 'Not yet scored', color: status.neutral, bg: color.hover };
+  if (score < 2.5) return { key: 'thin', label: 'Too thin', color: status.attention, bg: withAlphaBg(status.attention) };
+  if (score <= 3.75) return { key: 'ideal', label: 'Ideal', color: status.healthy, bg: withAlphaBg(status.healthy) };
+  return { key: 'heavy', label: 'Too heavy', color: status.information, bg: withAlphaBg(status.information) };
+}
+
+function withAlphaBg(hex) {
+  return softTint(hex).background;
 }
 
 export function confidenceStyleFor(confidence) {
   const map = {
-    high: { color: '#ffffff', background: '#166534' },
-    medium: { color: '#ffffff', background: '#a35a05' },
-    low: { color: '#ffffff', background: '#b91c1c' },
+    high: softTint(status.healthy),
+    medium: softTint(status.attention),
+    low: softTint(status.critical),
   };
   return map[confidence] || map.high;
 }
@@ -58,13 +64,24 @@ export function describeFinalScore(analysis) {
   return { label: matched.length > 0 ? matched.join(' + ') : 'Override', score: analysis.final_bcs };
 }
 
+// provider_selected reads as an AI decision endorsed by a reviewer, so it
+// borrows the AI-accent hue; overridden is a human deviating from every
+// model/statistic, so it reads as an attention-worthy amber.
 export const REVIEW_ACTION_META = {
-  provider_selected: { label: 'Selected', color: '#1d4ed8', background: '#e8edfc' },
-  overridden: { label: 'Overridden', color: '#b45309', background: '#fdf1de' },
+  provider_selected: { label: 'Selected', ...softTint(color.ai) },
+  overridden: { label: 'Overridden', ...softTint(status.attention) },
 };
 
 export const THEME = {
-  '--bg-page': '#f6f5f0', '--bg-card': '#ffffff', '--border': '#e5e0d3', '--border-soft': '#d8d2c2',
-  '--border-soft2': '#e2ddd0', '--text-primary': '#20241f', '--text-secondary': '#82796a',
-  '--text-tertiary': '#9a9280', '--chip-bg': '#efece1', '--scrollbar': '#cfc9ba', '--stepper-bg': '#f6f5f0',
+  '--bg-page': color.bgPage,
+  '--bg-card': color.bgCard,
+  '--border': color.border,
+  '--border-soft': color.borderCard,
+  '--border-soft2': color.border,
+  '--text-primary': color.textPrimary,
+  '--text-secondary': color.textSecondary,
+  '--text-tertiary': color.textMuted,
+  '--chip-bg': color.hover,
+  '--scrollbar': '#D1D5DB',
+  '--stepper-bg': color.bgPage,
 };

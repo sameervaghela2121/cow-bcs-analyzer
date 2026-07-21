@@ -1,8 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { History } from 'lucide-react';
 import { auditApi } from '../api/audit.js';
 import { formatScore, describeFinalScore, REVIEW_ACTION_META } from '../domain/bcs.js';
 import Skeleton from '../components/Skeleton.jsx';
+import { PageHeader, EmptyState, StatusChip } from '../components/ui/index.js';
+import { color, radius, shadow, transition } from '../styles/tokens.js';
+
+const cardShellStyle = {
+  background: color.bgCard,
+  border: `1px solid ${color.borderCard}`,
+  borderRadius: radius.card,
+  boxShadow: shadow.card,
+  transition,
+};
 
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -28,14 +39,16 @@ export default function AuditPage() {
   const entries = data?.entries || [];
 
   return (
-    <div style={{ padding: '32px 28px 60px' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Audit Log</h1>
-      <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 22px' }}>Every score selection and override - click a row for the full before/after detail.</p>
+    <div style={{ padding: '32px 32px 60px' }}>
+      <PageHeader
+        title="Audit Log"
+        subtitle="Every score selection and override - click a row for the full before/after detail."
+      />
 
       {isLoading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #e5e0d3', borderRadius: 10, padding: '12px 14px' }}>
+            <div key={i} style={{ ...cardShellStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Skeleton width={90} height={13.5} style={{ marginBottom: 6 }} />
                 <Skeleton width={160} height={12} />
@@ -48,12 +61,10 @@ export default function AuditPage() {
       )}
 
       {!isLoading && entries.length === 0 && (
-        <div style={{ background: '#fff', border: '1px dashed #d8d2c2', borderRadius: 12, padding: 40, textAlign: 'center', color: '#82796a' }}>
-          No review decisions logged yet.
-        </div>
+        <EmptyState icon={History} title="No review decisions logged yet." description="Approvals, selections, and overrides will show up here as reviewers work through the queue." />
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {entries.map((entry) => {
           const meta = REVIEW_ACTION_META[entry.action] || REVIEW_ACTION_META.provider_selected;
           return (
@@ -63,18 +74,18 @@ export default function AuditPage() {
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/audit/${entry.id}`); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #e5e0d3', borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}
+              onMouseEnter={(e) => { e.currentTarget.style.boxShadow = shadow.raised; }}
+              onMouseLeave={(e) => { e.currentTarget.style.boxShadow = shadow.card; }}
+              style={{ ...cardShellStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', cursor: 'pointer' }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13.5px', fontWeight: 700 }}>Cow {entry.cowsId}</div>
-                <div style={{ fontSize: 12, color: '#82796a' }}>
+                <div style={{ fontSize: 14.5, fontWeight: 600, color: color.textPrimary }}>Cow {entry.cowsId}</div>
+                <div style={{ fontSize: 12.5, color: color.textSecondary, marginTop: 2 }}>
                   {fmtDate(entry.createdAt)}{entry.performedBy ? ` • ${entry.performedBy.name || entry.performedBy.email}` : ''}
                 </div>
               </div>
-              <span style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 9px', borderRadius: 999, color: meta.color, background: meta.background }}>
-                {meta.label}
-              </span>
-              <div style={{ fontSize: 13, color: '#5c5748', minWidth: 140, textAlign: 'right' }}>
+              <StatusChip tone={entry.action === 'overridden' ? 'warning' : 'ai'} label={meta.label} />
+              <div style={{ fontSize: 13.5, color: color.textPrimary, fontWeight: 500, minWidth: 140, textAlign: 'right' }}>
                 {summaryText(entry)}
               </div>
             </div>

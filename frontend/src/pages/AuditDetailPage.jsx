@@ -4,6 +4,8 @@ import { ArrowLeft } from 'lucide-react';
 import { auditApi } from '../api/audit.js';
 import { formatScore, PROVIDERS, PROVIDER_LABELS, meanOfScores, medianOfScores, REVIEW_ACTION_META } from '../domain/bcs.js';
 import Skeleton from '../components/Skeleton.jsx';
+import { StatusChip } from '../components/ui/index.js';
+import { color, font, radius, shadow, softTint, status, withAlpha } from '../styles/tokens.js';
 
 function fmtDateTime(iso) {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -48,6 +50,8 @@ function statisticsPickLabel(snapshot) {
   return pickLabel(matched, snapshot?.is_approved);
 }
 
+const changedTint = softTint(status.attention);
+
 function DiffRow({ label, before, after }) {
   const changed = before !== after;
   return (
@@ -55,15 +59,15 @@ function DiffRow({ label, before, after }) {
       data-testid={`audit-diff-row-${label}`}
       style={{
         display: 'grid', gridTemplateColumns: '180px 1fr 24px 1fr', alignItems: 'start', gap: 14,
-        padding: '12px 14px', borderRadius: 8,
-        background: changed ? '#fdf1de' : 'transparent',
-        border: changed ? '1px solid #f0d9ab' : '1px solid transparent',
+        padding: '12px 14px', borderRadius: radius.sm,
+        background: changed ? changedTint.background : 'transparent',
+        border: changed ? `1px solid ${withAlpha(status.attention, 0.3)}` : '1px solid transparent',
       }}
     >
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: changed ? '#92400e' : '#82796a' }}>{label}</div>
-      <div style={{ fontSize: 13, color: changed ? '#5c5748' : '#a39c86' }}>{before}</div>
-      <div style={{ fontSize: 13, color: '#a39c86', textAlign: 'center' }}>{changed ? '→' : ''}</div>
-      <div style={{ fontSize: 13, fontWeight: changed ? 700 : 400, color: changed ? '#166534' : '#a39c86' }}>{after}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: changed ? status.attention : color.textSecondary }}>{label}</div>
+      <div style={{ fontSize: 13, color: changed ? color.textPrimary : color.textMuted }}>{before}</div>
+      <div style={{ fontSize: 13, color: color.textMuted, textAlign: 'center' }}>{changed ? '→' : ''}</div>
+      <div style={{ fontSize: 13, fontWeight: changed ? 700 : 400, color: changed ? color.primary : color.textMuted }}>{after}</div>
     </div>
   );
 }
@@ -76,11 +80,11 @@ export default function AuditDetailPage() {
 
   if (!entry) {
     return (
-      <div style={{ padding: '28px 28px 60px' }}>
+      <div style={{ padding: '28px 32px 60px' }}>
         <Skeleton width={70} height={14} style={{ marginBottom: 18 }} />
         <Skeleton width={180} height={24} style={{ marginBottom: 10 }} />
         <Skeleton width={220} height={13.5} style={{ marginBottom: 26 }} />
-        <div style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, padding: 14 }}>
+        <div style={{ background: color.bgCard, border: `1px solid ${color.borderCard}`, borderRadius: radius.card, boxShadow: shadow.card, padding: 14 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 24px 1fr', gap: 14, padding: '12px 14px' }}>
@@ -112,24 +116,27 @@ export default function AuditDetailPage() {
   ];
 
   return (
-    <div style={{ padding: '28px 28px 60px' }}>
-      <div onClick={() => navigate(-1)} style={{ cursor: 'pointer', color: '#166534', fontWeight: 600, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ArrowLeft size={16} /> Back
+    <div style={{ padding: '28px 32px 60px' }}>
+      <div
+        onClick={() => navigate(-1)}
+        style={{ cursor: 'pointer', color: color.primary, fontWeight: 600, fontSize: 13.5, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 6 }}
+      >
+        <ArrowLeft size={16} strokeWidth={2} /> Back
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Cow {entry.cowsId}</h1>
-        <span style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 9px', borderRadius: 999, color: meta.color, background: meta.background }}>
-          {meta.label}
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+        <h1 style={{ fontSize: font.size.section, fontWeight: font.weight.bold, color: color.textPrimary, margin: 0, letterSpacing: -0.3 }}>
+          Cow {entry.cowsId}
+        </h1>
+        <StatusChip tone={entry.action === 'overridden' ? 'warning' : 'ai'} label={meta.label} />
       </div>
-      <p style={{ fontSize: 13.5, color: '#82796a', margin: '0 0 26px' }}>
+      <p style={{ fontSize: 13.5, color: color.textSecondary, margin: '0 0 26px' }}>
         {fmtDateTime(entry.createdAt)}
         {entry.performedBy ? ` by ${entry.performedBy.name || entry.performedBy.email}` : ''}
       </p>
 
-      <div style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, padding: '14px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 24px 1fr', gap: 14, padding: '0 14px 10px', fontSize: 11, fontWeight: 700, color: '#a39c86', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+      <div style={{ background: color.bgCard, border: `1px solid ${color.borderCard}`, borderRadius: radius.card, boxShadow: shadow.card, padding: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 24px 1fr', gap: 14, padding: '0 14px 10px', fontSize: 11, fontWeight: 700, color: color.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 }}>
           <div>Field</div>
           <div>Before</div>
           <div />

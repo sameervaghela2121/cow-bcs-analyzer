@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Check } from 'lucide-react';
+import { Check, ClipboardCheck } from 'lucide-react';
 import { cowsApi } from '../api/cows.js';
 import { bcsAnalysisApi } from '../api/bcsAnalysis.js';
 import Badge from '../components/Badge.jsx';
 import Skeleton from '../components/Skeleton.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { formatScore } from '../domain/bcs.js';
+import { Button, Card, EmptyState, PageHeader } from '../components/ui/index.js';
+import { color, radius, transition } from '../styles/tokens.js';
 
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -48,18 +50,19 @@ function CandidateChip({ label, value, checked, disabled, onClick, style }) {
       disabled={!available || disabled}
       aria-pressed={checked}
       style={{
-        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999,
-        fontSize: 12.5, fontWeight: 600, border: checked ? '1.5px solid #166534' : '1px solid #d8d2c2',
-        background: checked ? '#e6f2e8' : '#fff',
-        color: available ? (checked ? '#166534' : '#3a3324') : '#b7b0a0',
+        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: radius.chip,
+        fontSize: 12.5, fontWeight: 600, border: checked ? `1.5px solid ${color.primary}` : `1px solid ${color.border}`,
+        background: checked ? color.primarySoft : color.bgCard,
+        color: available ? (checked ? color.primaryDark : color.textPrimary) : color.textMuted,
         cursor: available && !disabled ? 'pointer' : 'not-allowed',
         opacity: disabled && available ? 0.6 : 1,
+        transition,
         ...style,
       }}
     >
       <span style={{
         width: 15, height: 15, borderRadius: 4, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        border: checked ? 'none' : '1.5px solid #c9c2ae', background: checked ? '#166534' : 'transparent',
+        border: checked ? 'none' : `1.5px solid ${color.border}`, background: checked ? color.primary : 'transparent',
       }}>
         {checked && <Check size={11} color="#fff" strokeWidth={3} />}
       </span>
@@ -146,25 +149,25 @@ function ReviewRow({ cow }) {
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, padding: 16 }}>
+    <Card padding={16} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
       {latest.imageUrls?.[0] && (
         <img
           src={latest.imageUrls[0]} alt="" onClick={goToCow}
-          style={{ width: 58, height: 58, borderRadius: 8, objectFit: 'cover', flexShrink: 0, cursor: 'pointer' }}
+          style={{ width: 58, height: 58, borderRadius: radius.sm, objectFit: 'cover', flexShrink: 0, cursor: 'pointer' }}
         />
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ cursor: 'pointer' }} onClick={goToCow}>
-          <div style={{ fontSize: '14.5px', fontWeight: 700 }}>Cow {cow.cowsId}</div>
-          <div style={{ fontSize: '12.5px', color: '#82796a' }}>Last analyzed {fmtDate(latest.createdAt)}</div>
+          <div style={{ fontSize: '14.5px', fontWeight: 700, color: color.textPrimary }}>Cow {cow.cowsId}</div>
+          <div style={{ fontSize: '12.5px', color: color.textSecondary }}>Last analyzed {fmtDate(latest.createdAt)}</div>
           {selectMutation.isError && (
-            <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Failed to submit - try again.</div>
+            <div style={{ fontSize: '11.5px', color: color.danger, fontWeight: 600 }}>Failed to submit - try again.</div>
           )}
           {overrideMutation.isError && (
-            <div style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 600 }}>Override failed - try again.</div>
+            <div style={{ fontSize: '11.5px', color: color.danger, fontWeight: 600 }}>Override failed - try again.</div>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           {candidates.map((c, i) => (
             <CandidateChip
               key={c.key}
@@ -181,54 +184,59 @@ function ReviewRow({ cow }) {
 
       {editing ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={() => setTempScore((s) => Math.max(1, roundQuarter(s - 0.25)))} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #d8d2c2', cursor: 'pointer' }}>&minus;</button>
-          <div style={{ fontSize: 18, fontWeight: 800, minWidth: 44, textAlign: 'center' }}>{formatScore(tempScore)}</div>
-          <button onClick={() => setTempScore((s) => Math.min(5, roundQuarter(s + 0.25)))} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #d8d2c2', cursor: 'pointer' }}>+</button>
-          <button onClick={confirmOverride} disabled={overrideMutation.isPending} style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer' }}>
+          <button
+            onClick={() => setTempScore((s) => Math.max(1, roundQuarter(s - 0.25)))}
+            style={{ width: 30, height: 30, borderRadius: radius.sm, border: `1px solid ${color.border}`, background: color.bgCard, color: color.textPrimary, cursor: 'pointer', transition }}
+          >
+            &minus;
+          </button>
+          <div style={{ fontSize: 18, fontWeight: 800, minWidth: 44, textAlign: 'center', color: color.textPrimary }}>{formatScore(tempScore)}</div>
+          <button
+            onClick={() => setTempScore((s) => Math.min(5, roundQuarter(s + 0.25)))}
+            style={{ width: 30, height: 30, borderRadius: radius.sm, border: `1px solid ${color.border}`, background: color.bgCard, color: color.textPrimary, cursor: 'pointer', transition }}
+          >
+            +
+          </button>
+          <Button variant="primary" size="sm" onClick={confirmOverride} disabled={overrideMutation.isPending}>
             {overrideMutation.isPending ? 'Saving…' : 'Confirm'}
-          </button>
-          <button onClick={() => setEditing(false)} disabled={overrideMutation.isPending} style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}>
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={overrideMutation.isPending}>
             Cancel
-          </button>
+          </Button>
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Badge score={previewScore} />
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => selectMutation.mutate(selectedSource)}
             disabled={anyActionPending || selectedSource == null}
-            style={{
-              padding: '8px 14px', borderRadius: 7, border: 'none', cursor: selectedSource == null ? 'default' : 'pointer', fontWeight: 700,
-              background: selectedSource == null ? '#efece1' : '#166534', color: selectedSource == null ? '#a39c86' : '#fff',
-            }}
+            style={selectedSource == null ? { background: color.hover, color: color.textMuted } : undefined}
           >
             {selectMutation.isPending ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            onClick={startOverride}
-            disabled={anyActionPending}
-            style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid #d8d2c2', background: '#fff', cursor: 'pointer' }}
-          >
+          </Button>
+          <Button variant="secondary" size="sm" onClick={startOverride} disabled={anyActionPending}>
             Override
-          </button>
+          </Button>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 function SkeletonReviewRow() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, padding: 16 }}>
-      <Skeleton width={58} height={58} radius={8} style={{ flexShrink: 0 }} />
+    <Card padding={16} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <Skeleton width={58} height={58} radius={radius.sm} style={{ flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <Skeleton width={100} height={14.5} style={{ marginBottom: 8 }} />
         <div style={{ display: 'flex', gap: 8 }}>
-          {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} width={70} height={26} radius={999} />)}
+          {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} width={70} height={26} radius={radius.chip} />)}
         </div>
       </div>
-      <Skeleton width={130} height={36} radius={7} />
-    </div>
+      <Skeleton width={130} height={36} radius={radius.sm} />
+    </Card>
   );
 }
 
@@ -241,20 +249,17 @@ export default function ReviewPage() {
   );
 
   return (
-    <div style={{ padding: '32px 28px 60px' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Review</h1>
-      <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 22px' }}>
-        Completed analyses waiting for a reviewer - click any combination of models, mean, or median that
-        looks right (matching ones highlight together automatically), then Save. Or Override with your own value.
-      </p>
+    <div style={{ padding: '32px 32px 60px' }}>
+      <PageHeader
+        title="Review"
+        subtitle="Completed analyses waiting for a reviewer — click any combination of models, mean, or median that looks right (matching ones highlight together automatically), then Save. Or Override with your own value."
+      />
 
       {!isLoading && cows.length === 0 && (
-        <div style={{ background: '#fff', border: '1px dashed #d8d2c2', borderRadius: 12, padding: 40, textAlign: 'center', color: '#82796a' }}>
-          Nothing waiting for review right now.
-        </div>
+        <EmptyState icon={ClipboardCheck} title="Nothing waiting for review right now" description="New analyses will show up here once they finish processing." />
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {isLoading && Array.from({ length: 3 }).map((_, i) => <SkeletonReviewRow key={i} />)}
         {!isLoading && cows.map((cow) => <ReviewRow key={cow.cowsId} cow={cow} />)}
       </div>

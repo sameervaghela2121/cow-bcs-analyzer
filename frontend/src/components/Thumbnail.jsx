@@ -19,7 +19,7 @@ export default function Thumbnail({ readingId, size = 58 }) {
   }, [readingId]);
 
   if (!url) {
-    return <div style={{ width: size, height: size, borderRadius: 8, background: '#e5e0d3', flexShrink: 0 }} />;
+    return <div style={{ width: size, height: size, borderRadius: 8, background: '#F3F4F6', flexShrink: 0 }} />;
   }
   return <img src={url} alt="" style={{ width: size, height: size, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />;
 }

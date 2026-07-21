@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Check, ImagePlus, UploadCloud, X } from 'lucide-react';
 import { bcsAnalysisApi, putFileToGcs, analyzeBcsRecord } from '../api/bcsAnalysis.js';
 import { cowsApi } from '../api/cows.js';
+import { Button, Card, PageHeader, TextInput } from '../components/ui/index.js';
+import { color, radius, shadow, softTint, transition } from '../styles/tokens.js';
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const SAFE_COWS_ID = /^[A-Za-z0-9._-]{1,128}$/;
@@ -61,10 +63,10 @@ function FilePreview({ file, onRemove, progress }) {
 
   return (
     <div style={{ position: 'relative', width: 96 }}>
-      <div style={{ width: 96, height: 96, borderRadius: 10, overflow: 'hidden', background: '#efece1', border: '1px solid #e5e0d3', position: 'relative' }}>
+      <div style={{ width: 96, height: 96, borderRadius: radius.input, overflow: 'hidden', background: color.hover, border: `1px solid ${color.border}`, position: 'relative' }}>
         {previewUrl && <img src={previewUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
         {progress != null && (
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(28,42,32,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(17,24,39,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {progress >= 100 ? <Check size={26} color="#fff" /> : <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{progress}%</span>}
           </div>
         )}
@@ -75,17 +77,17 @@ function FilePreview({ file, onRemove, progress }) {
           title="Remove"
           style={{
             position: 'absolute', top: -7, right: -7, width: 22, height: 22, borderRadius: '50%',
-            border: '2px solid #fff', background: '#1c2a20', color: '#fff', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+            border: '2px solid #fff', background: color.primary, color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition,
           }}
         >
           <X size={12} />
         </button>
       )}
-      <div style={{ fontSize: 11, color: '#82796a', marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ fontSize: 11, color: color.textSecondary, marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {file.name}
       </div>
-      <div style={{ fontSize: 10.5, color: '#a39c86' }}>{formatBytes(file.size)}</div>
+      <div style={{ fontSize: 10.5, color: color.textMuted }}>{formatBytes(file.size)}</div>
     </div>
   );
 }
@@ -261,13 +263,10 @@ export default function UploadPage() {
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '36px 28px 60px' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Upload Photoes</h1>
-      <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 24px' }}>
-        Upload one or more photos of the same cow
-      </p>
+      <PageHeader title="Upload Photos" subtitle="Upload one or more photos of the same cow." />
 
-      <div style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 14, padding: 24 }}>
-        <label htmlFor="upload-cow-id" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+      <Card padding={24}>
+        <label htmlFor="upload-cow-id" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.textPrimary, marginBottom: 8 }}>
           Cow ID (search or enter new)
         </label>
 
@@ -276,7 +275,8 @@ export default function UploadPage() {
             <div
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-                border: '1px solid #cfe0cf', borderRadius: 8, background: '#eef4ee', fontSize: 15, fontWeight: 700, color: '#1c2a20',
+                border: `1px solid ${color.border}`, borderRadius: radius.input, background: color.primarySoft,
+                fontSize: 15, fontWeight: 700, color: color.primaryDark,
               }}
             >
               <span>Cow #{selectedCow.cowsId}</span>
@@ -284,7 +284,7 @@ export default function UploadPage() {
                 <button
                   onClick={clearSelectedCow}
                   title="Clear"
-                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: '#1c2a20' }}
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: color.primaryDark }}
                 >
                   <X size={16} />
                 </button>
@@ -293,20 +293,20 @@ export default function UploadPage() {
           </div>
         ) : (
           <div style={{ position: 'relative', marginBottom: 20 }}>
-            <input
+            <TextInput
               id="upload-cow-id" value={cowId} onChange={(e) => setCowId(e.target.value)} disabled={locked}
               onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
               onBlur={() => setShowSuggestions(false)}
               onKeyDown={(e) => { if (e.key === 'Escape') setShowSuggestions(false); }}
               placeholder="e.g. 4417"
               autoComplete="off"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', fontSize: 16, border: '1px solid #d8d2c2', borderRadius: 8 }}
+              style={{ fontSize: 16 }}
             />
             {showSuggestions && suggestions.length > 0 && (
               <div
                 style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: '#fff',
-                  border: '1px solid #d8d2c2', borderRadius: 8, boxShadow: '0 4px 12px rgba(28,42,32,0.12)', zIndex: 10,
+                  position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: color.bgCard,
+                  border: `1px solid ${color.border}`, borderRadius: radius.input, boxShadow: shadow.raised, zIndex: 10,
                   maxHeight: 220, overflowY: 'auto',
                 }}
               >
@@ -316,8 +316,8 @@ export default function UploadPage() {
                     // onMouseDown (not onClick) fires before the input's onBlur closes the dropdown.
                     onMouseDown={(e) => { e.preventDefault(); selectCow(cow); }}
                     style={{
-                      padding: '10px 14px', fontSize: 14.5, cursor: 'pointer',
-                      borderBottom: i === suggestions.length - 1 ? 'none' : '1px solid #f0ede2',
+                      padding: '10px 14px', fontSize: 14.5, cursor: 'pointer', color: color.textPrimary,
+                      borderBottom: i === suggestions.length - 1 ? 'none' : `1px solid ${color.hover}`,
                     }}
                   >
                     Cow - {cow.cowsId}
@@ -328,7 +328,11 @@ export default function UploadPage() {
           </div>
         )}
 
-        {error && <div style={{ background: '#fbe4e4', color: '#b91c1c', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 16 }}>{error}</div>}
+        {error && (
+          <div style={{ ...softTint(color.danger), fontSize: 13, fontWeight: 500, padding: '10px 14px', borderRadius: radius.input, marginBottom: 16 }}>
+            {error}
+          </div>
+        )}
 
         {!locked && (
           <div
@@ -341,25 +345,25 @@ export default function UploadPage() {
             onDrop={handleDrop}
             style={{
               position: 'relative',
-              border: `2px dashed ${isDragging ? '#166534' : '#c7c0ac'}`,
-              borderRadius: 12,
+              border: `2px dashed ${isDragging ? color.primary : color.border}`,
+              borderRadius: radius.card,
               padding: '40px 20px',
               textAlign: 'center',
               cursor: 'pointer',
-              background: isDragging ? '#eef4ee' : '#fbfaf6',
-              transition: 'background 0.15s, border-color 0.15s',
+              background: isDragging ? color.primarySoft : color.hover,
+              transition,
             }}
           >
             {isDragging ? (
-              <UploadCloud size={32} style={{ marginBottom: 8, color: '#166534' }} />
+              <UploadCloud size={32} style={{ marginBottom: 8, color: color.primary }} />
             ) : (
-              <ImagePlus size={32} style={{ marginBottom: 8, color: '#a39c86' }} />
+              <ImagePlus size={32} style={{ marginBottom: 8, color: color.textMuted }} />
             )}
-            <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 3 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: color.textPrimary, marginBottom: 3 }}>
               {isDragging ? 'Drop to add' : 'Drag & drop photos here'}
             </div>
-            <div style={{ fontSize: 12.5, color: '#82796a' }}>
-              or <span style={{ color: '#166534', fontWeight: 600, textDecoration: 'underline' }}>browse files</span>
+            <div style={{ fontSize: 12.5, color: color.textSecondary }}>
+              or <span style={{ color: color.primary, fontWeight: 600, textDecoration: 'underline' }}>browse files</span>
             </div>
             <input
               ref={fileInputRef}
@@ -380,13 +384,9 @@ export default function UploadPage() {
         )}
 
         {!locked && pendingFiles.length > 0 && (
-          <button
-            onClick={submitBatch}
-            disabled={submitting}
-            style={{ width: '100%', padding: '13px 20px', borderRadius: 8, border: 'none', background: '#1c2a20', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, marginTop: 20 }}
-          >
+          <Button variant="primary" size="lg" onClick={submitBatch} disabled={submitting} style={{ width: '100%', marginTop: 20 }}>
             Upload Photos
-          </button>
+          </Button>
         )}
 
         {locked && (
@@ -399,23 +399,24 @@ export default function UploadPage() {
                 return <FilePreview key={item.id} file={item.file} progress={pct} />;
               })}
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: 'flex', justifyContent: 'space-between', color: '#3c372c' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between', color: color.textPrimary }}>
               <span>{PHASE_LABEL[phase] || 'Uploading…'}</span>
               {phase === 'uploading' && <span>{uploadPercent}%</span>}
             </div>
-            <div style={{ height: 8, borderRadius: 999, background: '#efece1', overflow: 'hidden' }}>
+            <div style={{ height: 8, borderRadius: radius.chip, background: color.hover, overflow: 'hidden' }}>
               <div
                 style={{
                   height: '100%',
                   width: `${phase === 'uploading' ? uploadPercent : phase === 'finalizing' ? 100 : 8}%`,
-                  background: '#1c2a20',
+                  background: color.primary,
+                  borderRadius: radius.chip,
                   transition: 'width 0.25s ease',
                 }}
               />
             </div>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

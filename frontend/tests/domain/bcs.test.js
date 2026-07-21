@@ -15,10 +15,10 @@ describe('bandFor', () => {
 });
 
 describe('confidenceStyleFor', () => {
-  it('maps high/medium/low to the prototype colors', () => {
-    expect(confidenceStyleFor('high').background).toBe('#166534');
-    expect(confidenceStyleFor('medium').background).toBe('#a35a05');
-    expect(confidenceStyleFor('low').background).toBe('#b91c1c');
+  it('maps high/medium/low to the design system status colors', () => {
+    expect(confidenceStyleFor('high').color).toBe('#43A047');
+    expect(confidenceStyleFor('medium').color).toBe('#F9A825');
+    expect(confidenceStyleFor('low').color).toBe('#D32F2F');
   });
 });
 
@@ -37,6 +37,6 @@ describe('formatScore', () => {
 
 describe('THEME', () => {
   it('has the core css vars for the (only) light palette', () => {
-    expect(THEME['--bg-page']).toBe('#f6f5f0');
+    expect(THEME['--bg-page']).toBe('#F7F8F5');
   });
 });
