@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { auditApi } from '../api/audit.js';
 import { formatScore, PROVIDERS, PROVIDER_LABELS, meanOfScores, medianOfScores, REVIEW_ACTION_META } from '../domain/bcs.js';
+import Skeleton from '../components/Skeleton.jsx';
 
 function fmtDateTime(iso) {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -73,7 +74,27 @@ export default function AuditDetailPage() {
   const { data } = useQuery({ queryKey: ['audit', id], queryFn: () => auditApi.get(id) });
   const entry = data?.auditLog;
 
-  if (!entry) return <div style={{ padding: 28 }}>Loading&hellip;</div>;
+  if (!entry) {
+    return (
+      <div style={{ padding: '28px 28px 60px' }}>
+        <Skeleton width={70} height={14} style={{ marginBottom: 18 }} />
+        <Skeleton width={180} height={24} style={{ marginBottom: 10 }} />
+        <Skeleton width={220} height={13.5} style={{ marginBottom: 26 }} />
+        <div style={{ background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, padding: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 24px 1fr', gap: 14, padding: '12px 14px' }}>
+                <Skeleton width={90} height={12.5} />
+                <Skeleton width="70%" height={13} />
+                <div />
+                <Skeleton width="70%" height={13} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const meta = REVIEW_ACTION_META[entry.action] || REVIEW_ACTION_META.provider_selected;
   const beforeScores = successfulScoresFrom(entry.before?.bcsScore);

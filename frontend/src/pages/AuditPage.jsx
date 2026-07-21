@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { auditApi } from '../api/audit.js';
 import { formatScore, describeFinalScore, REVIEW_ACTION_META } from '../domain/bcs.js';
+import Skeleton from '../components/Skeleton.jsx';
 
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -23,7 +24,7 @@ function summaryText(entry) {
 
 export default function AuditPage() {
   const navigate = useNavigate();
-  const { data } = useQuery({ queryKey: ['audit'], queryFn: () => auditApi.list() });
+  const { data, isLoading } = useQuery({ queryKey: ['audit'], queryFn: () => auditApi.list() });
   const entries = data?.entries || [];
 
   return (
@@ -31,7 +32,22 @@ export default function AuditPage() {
       <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Audit Log</h1>
       <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 22px' }}>Every score selection and override - click a row for the full before/after detail.</p>
 
-      {entries.length === 0 && (
+      {isLoading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #e5e0d3', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Skeleton width={90} height={13.5} style={{ marginBottom: 6 }} />
+                <Skeleton width={160} height={12} />
+              </div>
+              <Skeleton width={80} height={22} radius={999} />
+              <Skeleton width={100} height={13} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && entries.length === 0 && (
         <div style={{ background: '#fff', border: '1px dashed #d8d2c2', borderRadius: 12, padding: 40, textAlign: 'center', color: '#82796a' }}>
           No review decisions logged yet.
         </div>

@@ -11,6 +11,7 @@ import {
 } from '../domain/dashboardStats.js';
 import { bandFor, formatScore } from '../domain/bcs.js';
 import { statusLabel, statusColor } from '../domain/analysisStatus.js';
+import Skeleton from '../components/Skeleton.jsx';
 
 const card = { background: '#fff', border: '1px solid #e5e0d3', borderRadius: 12, padding: '18px 20px' };
 const cardTitle = { fontSize: 13.5, fontWeight: 700, margin: '0 0 14px' };
@@ -266,7 +267,32 @@ export default function DashboardPage() {
     return scores.reduce((sum, s) => sum + s, 0) / scores.length;
   }, [latestByCow]);
 
-  if (isLoading) return <div style={{ padding: 28 }}>Loading&hellip;</div>;
+  if (isLoading) {
+    return (
+      <div style={{ padding: '32px 28px 60px' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Dashboard</h1>
+        <p style={{ fontSize: 14, color: '#82796a', margin: '0 0 22px' }}>Herd health and AI review activity at a glance.</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px,1fr))', gap: 14, marginBottom: 18 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} style={card}>
+              <Skeleton width={80} height={12.5} style={{ marginBottom: 10 }} />
+              <Skeleton width={50} height={28} />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px,1fr))', gap: 16 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} style={card}>
+              <Skeleton width={200} height={13.5} style={{ marginBottom: 14 }} />
+              <Skeleton height={220} radius={8} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '32px 28px 60px' }}>
