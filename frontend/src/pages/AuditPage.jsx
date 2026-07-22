@@ -1,5 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+// Detail-page navigation (AuditDetailPage.jsx, route /audit/:id) is kept in
+// the router for now but no longer opened from here - the row itself
+// already shows what changed via the chip + summary text. To restore the
+// old click-through-to-detail behavior, add `useNavigate` and an onClick of
+// `navigate(`/audit/${entry.id}`)` back onto the row.
 import { History } from 'lucide-react';
 import { auditApi } from '../api/audit.js';
 import { formatScore, describeFinalScore, REVIEW_ACTION_META } from '../domain/bcs.js';
@@ -15,8 +19,10 @@ const cardShellStyle = {
   transition,
 };
 
+// "22 July 2026" - day-month-year reads unambiguously to a non-technical
+// end user, unlike the US month/day ordering used elsewhere in the app.
 function fmtDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 function summaryText(entry) {
@@ -34,7 +40,6 @@ function summaryText(entry) {
 }
 
 export default function AuditPage() {
-  const navigate = useNavigate();
   const { data, isLoading } = useQuery({ queryKey: ['audit'], queryFn: () => auditApi.list() });
   const entries = data?.entries || [];
 
@@ -42,7 +47,7 @@ export default function AuditPage() {
     <div style={{ padding: '32px 32px 60px' }}>
       <PageHeader
         title="Audit Log"
-        subtitle="Every score selection and override - click a row for the full before/after detail."
+        subtitle="Every score selection and override, most recent first."
       />
 
       {isLoading && (
@@ -70,23 +75,22 @@ export default function AuditPage() {
           return (
             <div
               key={entry.id}
-              onClick={() => navigate(`/audit/${entry.id}`)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/audit/${entry.id}`); }}
-              onMouseEnter={(e) => { e.currentTarget.style.boxShadow = shadow.raised; }}
-              onMouseLeave={(e) => { e.currentTarget.style.boxShadow = shadow.card; }}
-              style={{ ...cardShellStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', cursor: 'pointer' }}
+              style={{ ...cardShellStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px' }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 600, color: color.textPrimary }}>Cow {entry.cowsId}</div>
                 <div style={{ fontSize: 12.5, color: color.textSecondary, marginTop: 2 }}>
-                  {fmtDate(entry.createdAt)}{entry.performedBy ? ` • ${entry.performedBy.name || entry.performedBy.email}` : ''}
+                  {fmtDate(entry.createdAt)}{entry.performedBy ? ` • Edited by ${entry.performedBy.name || entry.performedBy.email}` : ''}
                 </div>
               </div>
-              <StatusChip tone={entry.action === 'overridden' ? 'warning' : 'ai'} label={meta.label} />
-              <div style={{ fontSize: 13.5, color: color.textPrimary, fontWeight: 500, minWidth: 140, textAlign: 'right' }}>
-                {summaryText(entry)}
+              {/* Chip + text grouped together (not spread across the row) so the
+                  gap between them stays the same whether the summary is short
+                  ("Gemini: 3.25") or long ("Claude + Gemini + Mean: 3.25"). */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                <StatusChip tone={entry.action === 'overridden' ? 'warning' : 'ai'} label={meta.label} />
+                <div style={{ fontSize: 13.5, color: color.textPrimary, fontWeight: 500, whiteSpace: 'nowrap' }}>
+                  {summaryText(entry)}
+                </div>
               </div>
             </div>
           );

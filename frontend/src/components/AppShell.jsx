@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { BarChart3, ClipboardCheck, History, LayoutGrid, LogOut, Search, Upload, Users } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { THEME } from '../domain/bcs.js';
-import { reviewBacklog } from '../domain/dashboardStats.js';
 import { cowsApi } from '../api/cows.js';
 import { color, font, radius, shadow, transition } from '../styles/tokens.js';
 import './AppShell.css';
@@ -12,7 +10,7 @@ import './AppShell.css';
 const NAV_ITEMS = [
   { to: '/upload', label: 'Upload', icon: Upload },
   { to: '/herd', label: 'Herd', icon: LayoutGrid },
-  { to: '/review', label: 'Review', icon: ClipboardCheck, badgeKey: 'review' },
+  { to: '/review', label: 'Review', icon: ClipboardCheck },
   { to: '/audit', label: 'Audit Log', icon: History },
   { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
 ];
@@ -69,55 +67,12 @@ function GlobalCowSearch() {
     setResults([]);
     setOpen(false);
   }
-
-  return (
-    <div style={{ position: 'relative', width: 280 }}>
-      <Search size={15} color={color.textMuted} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
-        placeholder="Jump to a cow…"
-        aria-label="Search cows"
-        style={{
-          width: '100%', boxSizing: 'border-box', padding: '8px 14px 8px 36px', fontSize: 13.5,
-          borderRadius: radius.search, border: `1px solid ${color.border}`, background: color.hover,
-          color: color.textPrimary, outline: 'none', transition,
-        }}
-      />
-      {open && results.length > 0 && (
-        <div
-          style={{
-            position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: color.bgCard,
-            border: `1px solid ${color.border}`, borderRadius: radius.input, boxShadow: shadow.raised,
-            zIndex: 20, overflow: 'hidden',
-          }}
-        >
-          {results.map((cow) => (
-            <div
-              key={cow.id}
-              onMouseDown={(e) => { e.preventDefault(); goTo(cow.cowsId); }}
-              style={{ padding: '9px 14px', fontSize: 13.5, fontWeight: 500, cursor: 'pointer', color: color.textPrimary }}
-            >
-              Cow {cow.cowsId}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function AppShell() {
   const { user, logout } = useAuth();
   const isAdmin = user?.role === 'admin';
   const rootStyle = { ...THEME, display: 'flex', height: '100%', width: '100%', background: color.bgPage, color: color.textPrimary, fontFamily: font.family };
-  // Same "cows list" query ReviewPage itself reads (and invalidates on
-  // approve) - a cow counts here exactly when ReviewPage would show it:
-  // its latest analysis completed but hasn't been approved yet.
-  const { data } = useQuery({ queryKey: ['cows'], queryFn: () => cowsApi.list() });
-  const flaggedCount = reviewBacklog(data?.cows || []).length;
 
   return (
     <div style={rootStyle}>
@@ -128,27 +83,16 @@ export default function AppShell() {
           display: 'flex', flexDirection: 'column', padding: '20px 14px',
         }}
       >
-        <div className="bcs-logo" style={{ fontSize: 16, fontWeight: 700, padding: '2px 8px 24px', display: 'flex', alignItems: 'center', gap: 10, color: color.textPrimary }}>
-          <img src="/cow-logo.png" alt="" style={{ width: 30, height: 30, objectFit: 'contain', borderRadius: 8 }} />
+        <div className="bcs-logo" style={{ fontSize: 20, fontWeight: 700, padding: '2px 8px 24px', display: 'flex', alignItems: 'center', gap: 10, color: color.textPrimary }}>
+          <img src="/cow-logo.png" alt="" style={{ width: 42, height: 42, objectFit: 'contain', borderRadius: 10 }} />
           BCS Tracker
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV_ITEMS.map(({ to, label, icon: Icon, badgeKey }) => (
+          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} className="bcs-nav" style={({ isActive }) => navItemStyle(isActive)}>
               <Icon size={16} strokeWidth={1.75} />
               {label}
-              {badgeKey === 'review' && flaggedCount > 0 && (
-                <span
-                  style={{
-                    background: color.danger, color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 999,
-                    minWidth: 19, height: 19, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '0 5px', marginLeft: 'auto',
-                  }}
-                >
-                  {flaggedCount}
-                </span>
-              )}
             </NavLink>
           ))}
           {isAdmin && (

@@ -102,7 +102,7 @@ describe('AuditPage', () => {
     await waitFor(() => expect(screen.getByText(/no review decisions/i)).toBeInTheDocument());
   });
 
-  it('navigates to the entry detail page when a row is clicked', async () => {
+  it('does not navigate to the detail page when a row is clicked', async () => {
     server.use(
       http.get('http://localhost:4000/api/audit', () =>
         HttpResponse.json({
@@ -122,6 +122,28 @@ describe('AuditPage', () => {
     renderAudit();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
     await userEvent.click(screen.getByText('Cow 4417'));
-    expect(await screen.findByText(/audit detail page/i)).toBeInTheDocument();
+    expect(screen.queryByText(/audit detail page/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the date as day-month-year and labels the reviewer as "Edited by"', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/audit', () =>
+        HttpResponse.json({
+          entries: [{
+            id: 'e1',
+            cowsId: '4417',
+            action: 'overridden',
+            before: { final_bcs: 3.5, is_approved: false },
+            after: { final_bcs: 3.25, is_approved: true },
+            performedBy: { id: 'u1', name: 'Jane Reviewer', email: 'jane@example.com' },
+            createdAt: '2026-07-21T00:00:00Z',
+          }],
+          total: 1,
+        })
+      )
+    );
+    renderAudit();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+    expect(screen.getByText(/21 july 2026.*edited by jane reviewer/i)).toBeInTheDocument();
   });
 });

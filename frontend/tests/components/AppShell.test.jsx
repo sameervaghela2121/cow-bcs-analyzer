@@ -55,22 +55,13 @@ describe('AppShell', () => {
     expect(logout).toHaveBeenCalledTimes(1);
   });
 
-  it('shows a badge with the count of completed-but-unapproved analyses', async () => {
+  it('does not show a review-count badge on the Review nav item', async () => {
     mockCows([
       { id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false },
-      { id: 'c2', cowsId: '5001', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: true },
-      { id: 'c3', cowsId: '6002', latestAnalysisStatus: 'processing', latestAnalysisIsApproved: false },
       { id: 'c4', cowsId: '7003', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false },
     ]);
     renderShell();
-    // only c1 and c4 are completed AND not yet approved
-    await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument());
-  });
-
-  it('shows no badge when nothing needs review', async () => {
-    mockCows([{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: true }]);
-    renderShell();
     await waitFor(() => expect(screen.getByText('Herd content')).toBeInTheDocument());
-    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    expect(screen.queryByText('2')).not.toBeInTheDocument();
   });
 });
