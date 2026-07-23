@@ -22,4 +22,8 @@ module.exports = {
   imageCompressor: {
     url: process.env.IMAGE_COMPRESSOR_URL || null,
   },
+  milking: {
+    bucketName: process.env.GCS_MILKING_BUCKET_NAME || 'sameerv-cow-milking-data',
+    importerUrl: process.env.MILKING_IMPORTER_URL || null,
+  },
 };

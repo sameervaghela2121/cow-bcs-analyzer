@@ -34,8 +34,8 @@ function buildObjectPath({ cowsId, batchTimestamp, filename }) {
   return `${cowsId}/${batchTimestamp}/${filename}`;
 }
 
-function toGsUri(objectPath) {
-  return `gs://${config.gcs.bucketName}/${objectPath}`;
+function toGsUri(objectPath, bucketName = config.gcs.bucketName) {
+  return `gs://${bucketName}/${objectPath}`;
 }
 
 function fromGsUri(gsUri) {
@@ -70,6 +70,7 @@ async function generateReadUrl({ objectPath }) {
 module.exports = {
   getStorage,
   sanitizeBatchTimestamp,
+  assertSafePathSegment,
   buildObjectPath,
   toGsUri,
   fromGsUri,

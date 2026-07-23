@@ -190,4 +190,57 @@ describe('UploadPage', () => {
     await user.click(screen.getByRole('button', { name: /upload photos/i }));
     expect(await screen.findByText(/may only contain letters, numbers/i)).toBeInTheDocument();
   });
+
+  it('toggles to the Milking Data section and uploads a .xlsx straight to GCS, then triggers the import', async () => {
+    let uploadUrlBody;
+    let putCalled = false;
+    let importBody;
+    server.use(
+      http.post('http://localhost:4000/api/milking-data/upload-url', async ({ request }) => {
+        uploadUrlBody = await request.json();
+        return HttpResponse.json({
+          dateFolder: '2026-07-22',
+          filename: uploadUrlBody.filename,
+          gsUri: `gs://sameerv-cow-milking-data/2026-07-22/${uploadUrlBody.filename}`,
+          objectPath: `2026-07-22/${uploadUrlBody.filename}`,
+          uploadUrl: `https://storage.googleapis.com/sameerv-cow-milking-data/2026-07-22/${uploadUrlBody.filename}`,
+        });
+      }),
+      http.put('https://storage.googleapis.com/sameerv-cow-milking-data/2026-07-22/:filename', () => {
+        putCalled = true;
+        return new HttpResponse(null, { status: 200 });
+      }),
+      http.post('http://localhost:4000/api/milking-data/import', async ({ request }) => {
+        importBody = await request.json();
+        return HttpResponse.json({ source: 'SCR', recordsInserted: 4 });
+      })
+    );
+
+    const user = renderUpload();
+    await user.click(screen.getByRole('button', { name: /milking data/i }));
+
+    const input = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
+    const file = new File(['fake-bytes'], 'scr-export.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await user.upload(input, file);
+    await user.click(screen.getByRole('button', { name: /upload & import/i }));
+
+    expect(await screen.findByText(/import complete: 4 SCR records added/i)).toBeInTheDocument();
+    expect(uploadUrlBody.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(putCalled).toBe(true);
+    expect(importBody.objectPath).toBe(`2026-07-22/${uploadUrlBody.filename}`);
+    // The picked file is no longer shown once the import succeeds - only the banner remains.
+    expect(screen.queryByText('scr-export.xlsx')).not.toBeInTheDocument();
+  });
+
+  it('switching back to BCS Photos does not show the milking upload zone', async () => {
+    const user = renderUpload();
+    await user.click(screen.getByRole('button', { name: /milking data/i }));
+    expect(screen.getByLabelText(/choose milking data file/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^bcs photos$/i }));
+    expect(screen.queryByLabelText(/choose milking data file/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/choose file/i, { selector: 'input' })).toBeInTheDocument();
+  });
 });

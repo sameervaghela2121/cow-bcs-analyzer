@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ImagePlus, UploadCloud, X } from 'lucide-react';
+import { Check, FileSpreadsheet, ImagePlus, UploadCloud, X } from 'lucide-react';
 import { bcsAnalysisApi, putFileToGcs, analyzeBcsRecord } from '../api/bcsAnalysis.js';
+import { milkingDataApi } from '../api/milkingData.js';
 import { cowsApi } from '../api/cows.js';
 import { Button, Card, PageHeader, TextInput } from '../components/ui/index.js';
 import { color, radius, shadow, softTint, transition } from '../styles/tokens.js';
@@ -9,11 +10,23 @@ import { color, radius, shadow, softTint, transition } from '../styles/tokens.js
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const SAFE_COWS_ID = /^[A-Za-z0-9._-]{1,128}$/;
 const EXTENSION_BY_TYPE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+const MODES = [
+  { id: 'bcs', label: 'BCS Photos' },
+  { id: 'milking', label: 'Milking Data' },
+];
 
 const PHASE_LABEL = {
   preparing: 'Preparing upload…',
   uploading: 'Uploading',
   finalizing: 'Saving…',
+};
+
+const MILKING_PHASE_LABEL = {
+  preparing: 'Preparing upload…',
+  uploading: 'Uploading…',
+  importing: 'Reading and storing records…',
 };
 
 function formatBytes(bytes) {
@@ -47,6 +60,13 @@ function safeFilename(file, index, usedNames) {
   }
   usedNames.add(candidate);
   return candidate;
+}
+
+// Mirrors safeFilename's reasoning above for the single milking-data file.
+function safeMilkingFilename(file) {
+  const rawBase = file.name.replace(/\.xlsx$/i, '');
+  const base = rawBase.replace(UNSAFE_FILENAME_CHARS, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 100) || 'milking-data';
+  return `${base}-${Date.now()}.xlsx`;
 }
 
 // `progress` is only passed once the batch is uploading (0-100). Left
@@ -92,7 +112,38 @@ function FilePreview({ file, onRemove, progress }) {
   );
 }
 
-export default function UploadPage() {
+function ModeToggle({ mode, setMode, disabled }) {
+  return (
+    <div style={{ display: 'inline-flex', gap: 4, padding: 4, background: color.hover, borderRadius: radius.chip, marginBottom: 20 }}>
+      {MODES.map(({ id, label }) => {
+        const active = mode === id;
+        return (
+          <button
+            key={id}
+            onClick={() => !disabled && setMode(id)}
+            disabled={disabled}
+            style={{
+              padding: '8px 16px',
+              borderRadius: radius.chip,
+              border: 'none',
+              fontSize: 13.5,
+              fontWeight: 600,
+              cursor: disabled ? 'default' : 'pointer',
+              background: active ? color.bgCard : 'transparent',
+              color: active ? color.primaryDark : color.textSecondary,
+              boxShadow: active ? shadow.card : 'none',
+              transition,
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function BcsUploadSection() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [cowId, setCowId] = useState('');
@@ -262,160 +313,336 @@ export default function UploadPage() {
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: '36px 28px 60px' }}>
-      <PageHeader title="Upload Photos" subtitle="Upload one or more photos of the same cow." />
+    <>
+      <label htmlFor="upload-cow-id" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.textPrimary, marginBottom: 8 }}>
+        Cow ID (search or enter new)
+      </label>
 
-      <Card padding={24}>
-        <label htmlFor="upload-cow-id" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.textPrimary, marginBottom: 8 }}>
-          Cow ID (search or enter new)
-        </label>
-
-        {selectedCow ? (
-          <div style={{ marginBottom: 20 }}>
-            <div
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-                border: `1px solid ${color.border}`, borderRadius: radius.input, background: color.primarySoft,
-                fontSize: 15, fontWeight: 700, color: color.primaryDark,
-              }}
-            >
-              <span>Cow #{selectedCow.cowsId}</span>
-              {!locked && (
-                <button
-                  onClick={clearSelectedCow}
-                  title="Clear"
-                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: color.primaryDark }}
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div style={{ position: 'relative', marginBottom: 20 }}>
-            <TextInput
-              id="upload-cow-id" value={cowId} onChange={(e) => setCowId(e.target.value)} disabled={locked}
-              onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
-              onBlur={() => setShowSuggestions(false)}
-              onKeyDown={(e) => { if (e.key === 'Escape') setShowSuggestions(false); }}
-              placeholder="e.g. 4417"
-              autoComplete="off"
-              style={{ fontSize: 16 }}
-            />
-            {showSuggestions && suggestions.length > 0 && (
-              <div
-                style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: color.bgCard,
-                  border: `1px solid ${color.border}`, borderRadius: radius.input, boxShadow: shadow.raised, zIndex: 10,
-                  maxHeight: 220, overflowY: 'auto',
-                }}
-              >
-                {suggestions.map((cow, i) => (
-                  <div
-                    key={cow.id}
-                    // onMouseDown (not onClick) fires before the input's onBlur closes the dropdown.
-                    onMouseDown={(e) => { e.preventDefault(); selectCow(cow); }}
-                    style={{
-                      padding: '10px 14px', fontSize: 14.5, cursor: 'pointer', color: color.textPrimary,
-                      borderBottom: i === suggestions.length - 1 ? 'none' : `1px solid ${color.hover}`,
-                    }}
-                  >
-                    Cow - {cow.cowsId}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {error && (
-          <div style={{ ...softTint(color.danger), fontSize: 13, fontWeight: 500, padding: '10px 14px', borderRadius: radius.input, marginBottom: 16 }}>
-            {error}
-          </div>
-        )}
-
-        {!locked && (
+      {selectedCow ? (
+        <div style={{ marginBottom: 20 }}>
           <div
-            role="button"
-            tabIndex={0}
-            onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
             style={{
-              position: 'relative',
-              border: `2px dashed ${isDragging ? color.primary : color.border}`,
-              borderRadius: radius.card,
-              padding: '40px 20px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              background: isDragging ? color.primarySoft : color.hover,
-              transition,
+              display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+              border: `1px solid ${color.border}`, borderRadius: radius.input, background: color.primarySoft,
+              fontSize: 15, fontWeight: 700, color: color.primaryDark,
             }}
           >
-            {isDragging ? (
-              <UploadCloud size={32} style={{ marginBottom: 8, color: color.primary }} />
-            ) : (
-              <ImagePlus size={32} style={{ marginBottom: 8, color: color.textMuted }} />
+            <span>Cow #{selectedCow.cowsId}</span>
+            {!locked && (
+              <button
+                onClick={clearSelectedCow}
+                title="Clear"
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: color.primaryDark }}
+              >
+                <X size={16} />
+              </button>
             )}
-            <div style={{ fontSize: 14.5, fontWeight: 600, color: color.textPrimary, marginBottom: 3 }}>
-              {isDragging ? 'Drop to add' : 'Drag & drop photos here'}
+          </div>
+        </div>
+      ) : (
+        <div style={{ position: 'relative', marginBottom: 20 }}>
+          <TextInput
+            id="upload-cow-id" value={cowId} onChange={(e) => setCowId(e.target.value)} disabled={locked}
+            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+            onBlur={() => setShowSuggestions(false)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setShowSuggestions(false); }}
+            placeholder="e.g. 4417"
+            autoComplete="off"
+            style={{ fontSize: 16 }}
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div
+              style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: color.bgCard,
+                border: `1px solid ${color.border}`, borderRadius: radius.input, boxShadow: shadow.raised, zIndex: 10,
+                maxHeight: 220, overflowY: 'auto',
+              }}
+            >
+              {suggestions.map((cow, i) => (
+                <div
+                  key={cow.id}
+                  // onMouseDown (not onClick) fires before the input's onBlur closes the dropdown.
+                  onMouseDown={(e) => { e.preventDefault(); selectCow(cow); }}
+                  style={{
+                    padding: '10px 14px', fontSize: 14.5, cursor: 'pointer', color: color.textPrimary,
+                    borderBottom: i === suggestions.length - 1 ? 'none' : `1px solid ${color.hover}`,
+                  }}
+                >
+                  Cow - {cow.cowsId}
+                </div>
+              ))}
             </div>
-            <div style={{ fontSize: 12.5, color: color.textSecondary }}>
-              or <span style={{ color: color.primary, fontWeight: 600, textDecoration: 'underline' }}>browse files</span>
-            </div>
-            <input
-              ref={fileInputRef}
-              id="upload-file-input" aria-label="Choose file" type="file" accept="image/jpeg,image/png,image/webp" multiple
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => { if (e.target.files.length) handleFiles(e.target.files); e.target.value = ''; }}
-              style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ ...softTint(color.danger), fontSize: 13, fontWeight: 500, padding: '10px 14px', borderRadius: radius.input, marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      {!locked && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => fileInputRef.current?.click()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{
+            position: 'relative',
+            border: `2px dashed ${isDragging ? color.primary : color.border}`,
+            borderRadius: radius.card,
+            padding: '40px 20px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: isDragging ? color.primarySoft : color.hover,
+            transition,
+          }}
+        >
+          {isDragging ? (
+            <UploadCloud size={32} style={{ marginBottom: 8, color: color.primary }} />
+          ) : (
+            <ImagePlus size={32} style={{ marginBottom: 8, color: color.textMuted }} />
+          )}
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: color.textPrimary, marginBottom: 3 }}>
+            {isDragging ? 'Drop to add' : 'Drag & drop photos here'}
+          </div>
+          <div style={{ fontSize: 12.5, color: color.textSecondary }}>
+            or <span style={{ color: color.primary, fontWeight: 600, textDecoration: 'underline' }}>browse files</span>
+          </div>
+          <input
+            ref={fileInputRef}
+            id="upload-file-input" aria-label="Choose file" type="file" accept="image/jpeg,image/png,image/webp" multiple
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => { if (e.target.files.length) handleFiles(e.target.files); e.target.value = ''; }}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+          />
+        </div>
+      )}
+
+      {!locked && pendingFiles.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 20 }}>
+          {pendingFiles.map((item) => (
+            <FilePreview key={item.id} file={item.file} onRemove={() => removeFile(item.id)} />
+          ))}
+        </div>
+      )}
+
+      {!locked && pendingFiles.length > 0 && (
+        <Button variant="primary" size="lg" onClick={submitBatch} disabled={submitting} style={{ width: '100%', marginTop: 20 }}>
+          Upload Photos
+        </Button>
+      )}
+
+      {locked && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>
+            {pendingFiles.map((item) => {
+              const p = uploadProgress[item.id];
+              const pct =
+                phase === 'uploading' ? (p && p.total > 0 ? Math.round((p.loaded / p.total) * 100) : 0) : phase === 'finalizing' ? 100 : 0;
+              return <FilePreview key={item.id} file={item.file} progress={pct} />;
+            })}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between', color: color.textPrimary }}>
+            <span>{PHASE_LABEL[phase] || 'Uploading…'}</span>
+            {phase === 'uploading' && <span>{uploadPercent}%</span>}
+          </div>
+          <div style={{ height: 8, borderRadius: radius.chip, background: color.hover, overflow: 'hidden' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${phase === 'uploading' ? uploadPercent : phase === 'finalizing' ? 100 : 8}%`,
+                background: color.primary,
+                borderRadius: radius.chip,
+                transition: 'width 0.25s ease',
+              }}
             />
           </div>
-        )}
+        </div>
+      )}
+    </>
+  );
+}
 
-        {!locked && pendingFiles.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 20 }}>
-            {pendingFiles.map((item) => (
-              <FilePreview key={item.id} file={item.file} onRemove={() => removeFile(item.id)} />
-            ))}
+function MilkingUploadSection() {
+  const fileInputRef = useRef(null);
+  const [file, setFile] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [phase, setPhase] = useState(null); // 'preparing' | 'uploading' | 'importing'
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null); // { source, recordsInserted }
+
+  const locked = phase != null;
+
+  function pickFile(nextFile) {
+    if (!nextFile) return;
+    if (!nextFile.name.toLowerCase().endsWith('.xlsx')) {
+      setError('Only .xlsx files are supported.');
+      return;
+    }
+    setError(null);
+    setResult(null);
+    setFile(nextFile);
+  }
+
+  function handleDragOver(e) {
+    if (locked) return;
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragging(false);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDragging(false);
+    if (locked) return;
+    if (e.dataTransfer.files.length) pickFile(e.dataTransfer.files[0]);
+  }
+
+  function reset() {
+    setFile(null);
+    setError(null);
+    setResult(null);
+    setPhase(null);
+  }
+
+  async function submit() {
+    if (!file) {
+      setError('Choose a milking data spreadsheet before uploading.');
+      return;
+    }
+    setError(null);
+    setPhase('preparing');
+    try {
+      const filename = safeMilkingFilename(file);
+      const { uploadUrl, objectPath } = await milkingDataApi.generateUploadUrl({ filename, contentType: XLSX_CONTENT_TYPE });
+
+      setPhase('uploading');
+      await putFileToGcs(uploadUrl, file, () => {});
+
+      setPhase('importing');
+      const imported = await milkingDataApi.importUpload({ objectPath });
+
+      setResult(imported);
+      setFile(null); // done with this file - only the result banner stays visible
+      setPhase(null);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Import failed.');
+      setPhase(null);
+    }
+  }
+
+  return (
+    <>
+      {error && (
+        <div style={{ ...softTint(color.danger), fontSize: 13, fontWeight: 500, padding: '10px 14px', borderRadius: radius.input, marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div style={{ ...softTint(color.success), fontSize: 13.5, fontWeight: 600, padding: '12px 14px', borderRadius: radius.input, marginBottom: 16 }}>
+          Import complete: {result.recordsInserted} {result.source} record{result.recordsInserted === 1 ? '' : 's'} added.
+        </div>
+      )}
+
+      {!locked && !file && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => fileInputRef.current?.click()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{
+            position: 'relative',
+            border: `2px dashed ${isDragging ? color.primary : color.border}`,
+            borderRadius: radius.card,
+            padding: '40px 20px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: isDragging ? color.primarySoft : color.hover,
+            transition,
+          }}
+        >
+          {isDragging ? (
+            <UploadCloud size={32} style={{ marginBottom: 8, color: color.primary }} />
+          ) : (
+            <FileSpreadsheet size={32} style={{ marginBottom: 8, color: color.textMuted }} />
+          )}
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: color.textPrimary, marginBottom: 3 }}>
+            {isDragging ? 'Drop to add' : 'Drag & drop a .xlsx file here'}
           </div>
-        )}
-
-        {!locked && pendingFiles.length > 0 && (
-          <Button variant="primary" size="lg" onClick={submitBatch} disabled={submitting} style={{ width: '100%', marginTop: 20 }}>
-            Upload Photos
-          </Button>
-        )}
-
-        {locked && (
-          <div style={{ marginTop: 4 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>
-              {pendingFiles.map((item) => {
-                const p = uploadProgress[item.id];
-                const pct =
-                  phase === 'uploading' ? (p && p.total > 0 ? Math.round((p.loaded / p.total) * 100) : 0) : phase === 'finalizing' ? 100 : 0;
-                return <FilePreview key={item.id} file={item.file} progress={pct} />;
-              })}
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between', color: color.textPrimary }}>
-              <span>{PHASE_LABEL[phase] || 'Uploading…'}</span>
-              {phase === 'uploading' && <span>{uploadPercent}%</span>}
-            </div>
-            <div style={{ height: 8, borderRadius: radius.chip, background: color.hover, overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%',
-                  width: `${phase === 'uploading' ? uploadPercent : phase === 'finalizing' ? 100 : 8}%`,
-                  background: color.primary,
-                  borderRadius: radius.chip,
-                  transition: 'width 0.25s ease',
-                }}
-              />
-            </div>
+          <div style={{ fontSize: 12.5, color: color.textSecondary }}>
+            or <span style={{ color: color.primary, fontWeight: 600, textDecoration: 'underline' }}>browse files</span>
           </div>
-        )}
+          <input
+            ref={fileInputRef}
+            aria-label="Choose milking data file"
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => { if (e.target.files.length) pickFile(e.target.files[0]); e.target.value = ''; }}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+          />
+        </div>
+      )}
+
+      {file && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: radius.input, background: color.hover, border: `1px solid ${color.border}` }}>
+          <FileSpreadsheet size={22} color={color.textMuted} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: color.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {file.name}
+            </div>
+            <div style={{ fontSize: 11.5, color: color.textMuted }}>{formatBytes(file.size)}</div>
+          </div>
+        </div>
+      )}
+
+      {file && !locked && !result && (
+        <Button variant="primary" size="lg" onClick={submit} style={{ width: '100%', marginTop: 20 }}>
+          Upload &amp; Import
+        </Button>
+      )}
+
+      {locked && (
+        <div style={{ fontSize: 13, fontWeight: 600, marginTop: 20, color: color.textPrimary }}>
+          {MILKING_PHASE_LABEL[phase]}
+        </div>
+      )}
+
+      {result && (
+        <Button variant="secondary" size="lg" onClick={reset} style={{ width: '100%', marginTop: 20 }}>
+          Upload another file
+        </Button>
+      )}
+    </>
+  );
+}
+
+export default function UploadPage() {
+  const [mode, setMode] = useState('bcs');
+
+  return (
+    <div style={{ maxWidth: 640, margin: '0 auto', padding: '36px 28px 60px' }}>
+      <PageHeader
+        title="Upload"
+        subtitle={mode === 'bcs' ? 'Upload one or more photos of the same cow.' : 'Upload a milking-parlor export (SCR or DelPro) as a .xlsx file.'}
+      />
+      <ModeToggle mode={mode} setMode={setMode} />
+      <Card padding={24}>
+        {mode === 'bcs' ? <BcsUploadSection /> : <MilkingUploadSection />}
       </Card>
     </div>
   );

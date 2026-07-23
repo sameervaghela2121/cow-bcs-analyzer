@@ -17,6 +17,9 @@ __pycache__/
 # Node
 node_modules/
 
+# Local reference/sample data - not meant to be pushed
+/Data/
+
 # OS files
 .DS_Store
 Thumbs.db
