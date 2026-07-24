@@ -528,12 +528,16 @@ function MilkingUploadSection() {
 
       setPhase('uploading');
       await putFileToGcs(uploadUrl, file, () => {});
+      // GCS upload succeeded - clear the picked file now, regardless of
+      // whether the import step below succeeds or fails. Otherwise a failed
+      // import leaves a stale file selection sitting next to the error,
+      // and re-offers "Upload & Import" for a file that's already in GCS.
+      setFile(null);
 
       setPhase('importing');
       const imported = await milkingDataApi.importUpload({ objectPath });
 
       setResult(imported);
-      setFile(null); // done with this file - only the result banner stays visible
       setPhase(null);
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Import failed.');
@@ -555,12 +559,16 @@ function MilkingUploadSection() {
         </div>
       )}
 
-      {!locked && !file && (
+      {!file && (
+        // Stays mounted (not hidden) once the picked file is cleared after a
+        // successful GCS upload, so the drop zone reappears immediately -
+        // just disabled while the import job is still running (locked).
         <div
           role="button"
-          tabIndex={0}
-          onClick={() => fileInputRef.current?.click()}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+          aria-disabled={locked}
+          tabIndex={locked ? -1 : 0}
+          onClick={() => { if (!locked) fileInputRef.current?.click(); }}
+          onKeyDown={(e) => { if (locked) return; if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -570,7 +578,8 @@ function MilkingUploadSection() {
             borderRadius: radius.card,
             padding: '40px 20px',
             textAlign: 'center',
-            cursor: 'pointer',
+            cursor: locked ? 'not-allowed' : 'pointer',
+            opacity: locked ? 0.5 : 1,
             background: isDragging ? color.primarySoft : color.hover,
             transition,
           }}
@@ -591,6 +600,7 @@ function MilkingUploadSection() {
             aria-label="Choose milking data file"
             type="file"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            disabled={locked}
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => { if (e.target.files.length) pickFile(e.target.files[0]); e.target.value = ''; }}
             style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}

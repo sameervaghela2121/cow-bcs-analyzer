@@ -46,7 +46,7 @@ def test_analyze_marks_processing_then_completed_on_success():
     }
     fake_payload = ImagePayload(bytes_data=b"x", mime_type="image/jpeg")
     fake_result = MultiModelBCSResponse(
-        gemini=ProviderAssessment(final_bcs=3.0, confidence="High", status="success")
+        gemini=ProviderAssessment(finalBcs=3.0, confidence="High", status="success")
     )
 
     with (
@@ -92,7 +92,7 @@ def test_analyze_skips_a_failed_image_but_still_completes_with_the_rest():
     }
     fake_payload = ImagePayload(bytes_data=b"x", mime_type="image/jpeg")
     fake_result = MultiModelBCSResponse(
-        gemini=ProviderAssessment(final_bcs=3.0, confidence="High", status="success")
+        gemini=ProviderAssessment(finalBcs=3.0, confidence="High", status="success")
     )
 
     async def fetch_side_effect(uri):

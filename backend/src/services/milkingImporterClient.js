@@ -27,8 +27,15 @@ async function triggerMilkingImport({ bucketName, objectPath }) {
       body: JSON.stringify({ bucketName, objectPath }),
     });
     if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`milking-data-importer request failed (${response.status}): ${text}`);
+      // The Cloud Function replies with { error: <message> } - for a bad
+      // file (status 400) that message is meaningful and meant to reach the
+      // end user as-is (see errorHandler.js: status < 500 passes err.message
+      // straight through). Anything else falls back to a generic message,
+      // consistent with hiding technical detail on real system faults.
+      const body = await response.json().catch(() => null);
+      const err = new Error(body?.error || `milking-data-importer request failed (${response.status})`);
+      err.status = response.status;
+      throw err;
     }
     return response.json();
   }

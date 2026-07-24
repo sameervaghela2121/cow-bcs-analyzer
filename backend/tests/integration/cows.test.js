@@ -98,7 +98,7 @@ describe('GET /api/cows (herd list)', () => {
     const user = await User.findOne({ email: 'herd@example.com' });
     const cow = await Cow.findOne({ cowsId: '1002' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsId: cow.cowsId,
+      cow: cow._id,
       cowsImages: ['gs://bucket/1002/2026-07-16T00-00-00-000Z/a.jpg', 'gs://bucket/1002/2026-07-16T00-00-00-000Z/b.jpg'],
       status: 'completed', createdBy: user._id, updatedBy: user._id,
     });
@@ -120,12 +120,12 @@ describe('GET /api/cows (herd list)', () => {
     const user = await User.findOne({ email: 'herd@example.com' });
     const cow = await Cow.findOne({ cowsId: '1002' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
+      cow: cow._id, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
       status: 'processing', createdBy: user._id, updatedBy: user._id,
     });
     await new Promise((r) => setTimeout(r, 10));
     await BcsAnalysis.create({
-      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1002/ts2/b.jpg'],
+      cow: cow._id, cowsImages: ['gs://bucket/1002/ts2/b.jpg'],
       status: 'completed', createdBy: user._id, updatedBy: user._id,
     });
 
@@ -137,8 +137,8 @@ describe('GET /api/cows (herd list)', () => {
     const user = await User.findOne({ email: 'herd@example.com' });
     const cow = await Cow.findOne({ cowsId: '1003' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
-      status: 'completed', is_approved: true, createdBy: user._id, updatedBy: user._id,
+      cow: cow._id, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
+      status: 'completed', isApproved: true, createdBy: user._id, updatedBy: user._id,
     });
 
     const res = await request(app).get('/api/cows?search=1003').set('Authorization', `Bearer ${token}`);
@@ -149,7 +149,7 @@ describe('GET /api/cows (herd list)', () => {
     const user = await User.findOne({ email: 'herd@example.com' });
     const cow = await Cow.findOne({ cowsId: '1001' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1001/ts/a.jpg'],
+      cow: cow._id, cowsImages: ['gs://bucket/1001/ts/a.jpg'],
       status: 'completed', createdBy: user._id, updatedBy: user._id,
     });
 
@@ -157,13 +157,13 @@ describe('GET /api/cows (herd list)', () => {
     expect(res.body.cows[0].latestAnalysisIsApproved).toBe(false);
   });
 
-  it('surfaces final_bcs as the latest BCS score once reviewed', async () => {
+  it('surfaces finalBcs as the latest BCS score once reviewed', async () => {
     const user = await User.findOne({ email: 'herd@example.com' });
     const cow = await Cow.findOne({ cowsId: '1002' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
-      status: 'completed', is_approved: true, final_bcs: 3.25,
-      bcsScore: { gemini: { final_bcs: 3.0, status: 'success' } },
+      cow: cow._id, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
+      status: 'completed', isApproved: true, finalBcs: 3.25,
+      bcsScore: { gemini: { finalBcs: 3.0, status: 'success' } },
       createdBy: user._id, updatedBy: user._id,
     });
 
@@ -175,9 +175,9 @@ describe('GET /api/cows (herd list)', () => {
     const user = await User.findOne({ email: 'herd@example.com' });
     const cow = await Cow.findOne({ cowsId: '1003' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsId: cow.cowsId, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
+      cow: cow._id, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
       status: 'completed',
-      bcsScore: { gemini: { final_bcs: 3.0, status: 'success' }, claude: { final_bcs: 3.5, status: 'success' } },
+      bcsScore: { gemini: { finalBcs: 3.0, status: 'success' }, claude: { finalBcs: 3.5, status: 'success' } },
       createdBy: user._id, updatedBy: user._id,
     });
 
@@ -200,17 +200,15 @@ describe('GET /api/cows/:cowsId/analyses', () => {
     cow = await Cow.create({ cowsId: '2002' });
     await BcsAnalysis.create({
       cow: cow._id,
-      cowsId: cow.cowsId,
       cowsImages: ['gs://bucket/2002/2026-07-01T00-00-00-000Z/a.jpg'],
       status: 'completed',
-      bcsScore: { gemini: { final_bcs: 3.0 } },
+      bcsScore: { gemini: { finalBcs: 3.0 } },
       createdBy: user._id,
       updatedBy: user._id,
     });
     await new Promise((r) => setTimeout(r, 10));
     await BcsAnalysis.create({
       cow: cow._id,
-      cowsId: cow.cowsId,
       cowsImages: ['gs://bucket/2002/2026-07-10T00-00-00-000Z/b.jpg'],
       status: 'not_started',
       createdBy: user._id,

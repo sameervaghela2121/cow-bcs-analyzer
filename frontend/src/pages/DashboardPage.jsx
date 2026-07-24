@@ -257,7 +257,7 @@ export default function DashboardPage() {
   const pipelineCounts = useMemo(() => pipelineStatusCounts(allAnalyses), [allAnalyses]);
   const agreement = useMemo(() => reviewerAgreementStats(allAnalyses), [allAnalyses]);
   const influence = useMemo(() => modelInfluenceStats(allAnalyses), [allAnalyses]);
-  const reviewedCount = useMemo(() => allAnalyses.filter((a) => a.is_approved).length, [allAnalyses]);
+  const reviewedCount = useMemo(() => allAnalyses.filter((a) => a.isApproved).length, [allAnalyses]);
   const trend = useMemo(() => scoreTrend(allAnalyses), [allAnalyses]);
   const attention = useMemo(() => cowsNeedingAttention(cows, latestByCow), [cows, latestByCow]);
   const volatility = useMemo(() => scoreVolatility(cows, allAnalyses), [cows, allAnalyses]);

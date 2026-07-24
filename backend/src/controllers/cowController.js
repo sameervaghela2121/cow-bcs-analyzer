@@ -20,11 +20,11 @@ async function serializeCow(cow, latestAnalysis) {
       generateReadUrl({ objectPath }),
     ]);
   }
-  // Same "final_bcs once reviewed, medianScore as a live preview before
+  // Same "finalBcs once reviewed, medianScore as a live preview before
   // that" rule the cow detail page and ReviewPage use - never re-derived
   // differently here.
   const latestBcsScore = latestAnalysis
-    ? latestAnalysis.final_bcs ?? medianOfScores(successfulScores(latestAnalysis.bcsScore))
+    ? latestAnalysis.finalBcs ?? medianOfScores(successfulScores(latestAnalysis.bcsScore))
     : null;
   return {
     id: cow._id.toString(),
@@ -34,7 +34,7 @@ async function serializeCow(cow, latestAnalysis) {
     updatedAt: cow.updatedAt,
     latestAnalysisStatus: latestAnalysis?.status ?? null,
     latestAnalysisAt: latestAnalysis?.createdAt ?? null,
-    latestAnalysisIsApproved: latestAnalysis?.is_approved ?? null,
+    latestAnalysisIsApproved: latestAnalysis?.isApproved ?? null,
     latestBcsScore,
     latestAnalysisThumbnailUrl,
     latestAnalysisImageUrl,
@@ -86,9 +86,9 @@ async function list(req, res, next) {
           _id: '$cow',
           status: { $first: '$status' },
           createdAt: { $first: '$createdAt' },
-          is_approved: { $first: '$is_approved' },
+          isApproved: { $first: '$isApproved' },
           cowsImages: { $first: '$cowsImages' },
-          final_bcs: { $first: '$final_bcs' },
+          finalBcs: { $first: '$finalBcs' },
           bcsScore: { $first: '$bcsScore' },
         },
       },
@@ -113,6 +113,7 @@ async function analyses(req, res, next) {
     const { page = 1, limit = 100 } = req.query;
     const total = await BcsAnalysis.countDocuments({ cow: cow._id });
     const docs = await BcsAnalysis.find({ cow: cow._id })
+      .populate('cow')
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit));

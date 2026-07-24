@@ -25,7 +25,7 @@ function renderDashboard() {
 }
 
 // Mirrors real backend shape: an approved record's effectiveScore comes
-// from final_bcs (the reviewer's decision); an unapproved one falls back to
+// from finalBcs (the reviewer's decision); an unapproved one falls back to
 // the live median preview, computed from whichever providers succeeded -
 // here just one, so the median collapses to that single score.
 function analysis({ cowsId, meanScore, status = 'completed', isApproved = false }) {
@@ -33,9 +33,9 @@ function analysis({ cowsId, meanScore, status = 'completed', isApproved = false 
     id: `${cowsId}-a1`,
     cowsId,
     status,
-    is_approved: isApproved,
-    final_bcs: isApproved ? meanScore : null,
-    bcsScore: isApproved ? {} : { claude: { status: 'success', final_bcs: meanScore } },
+    isApproved: isApproved,
+    finalBcs: isApproved ? meanScore : null,
+    bcsScore: isApproved ? {} : { claude: { status: 'success', finalBcs: meanScore } },
     createdAt: '2026-07-15T00:00:00Z',
     updatedAt: '2026-07-15T00:00:00Z',
     updatedBy: 'u1',

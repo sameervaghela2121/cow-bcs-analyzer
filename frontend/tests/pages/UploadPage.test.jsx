@@ -234,6 +234,96 @@ describe('UploadPage', () => {
     expect(screen.queryByText('scr-export.xlsx')).not.toBeInTheDocument();
   });
 
+  it('clears the picked milking file once the GCS upload succeeds, even if the import step afterwards fails', async () => {
+    server.use(
+      http.post('http://localhost:4000/api/milking-data/upload-url', async ({ request }) => {
+        const body = await request.json();
+        return HttpResponse.json({
+          dateFolder: '2026-07-22',
+          filename: body.filename,
+          gsUri: `gs://sameerv-cow-milking-data/2026-07-22/${body.filename}`,
+          objectPath: `2026-07-22/${body.filename}`,
+          uploadUrl: `https://storage.googleapis.com/sameerv-cow-milking-data/2026-07-22/${body.filename}`,
+        });
+      }),
+      http.put('https://storage.googleapis.com/sameerv-cow-milking-data/2026-07-22/:filename', () => new HttpResponse(null, { status: 200 })),
+      http.post('http://localhost:4000/api/milking-data/import', () =>
+        HttpResponse.json(
+          { error: 'This file is missing the Cow Id for row 3. Please fill in the Cow Id for every row and re-upload the file. No records were imported.' },
+          { status: 400 }
+        )
+      )
+    );
+
+    const user = renderUpload();
+    await user.click(screen.getByRole('button', { name: /milking data/i }));
+
+    const input = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
+    const file = new File(['fake-bytes'], 'delpro-export.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await user.upload(input, file);
+    await user.click(screen.getByRole('button', { name: /upload & import/i }));
+
+    expect(await screen.findByText(/missing the Cow Id for row 3/i)).toBeInTheDocument();
+    // The file was already uploaded to GCS by the time the import failed -
+    // it must not still be shown as "picked", and the retry button for it
+    // (which would just re-upload the same already-uploaded file) is gone too.
+    expect(screen.queryByText('delpro-export.xlsx')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /upload & import/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the drop zone again (disabled, not hidden) while the import job is still running after upload, then re-enables it once done', async () => {
+    let releaseImport;
+    const importStarted = new Promise((resolve) => {
+      server.use(
+        http.post('http://localhost:4000/api/milking-data/upload-url', async ({ request }) => {
+          const body = await request.json();
+          return HttpResponse.json({
+            dateFolder: '2026-07-22',
+            filename: body.filename,
+            gsUri: `gs://sameerv-cow-milking-data/2026-07-22/${body.filename}`,
+            objectPath: `2026-07-22/${body.filename}`,
+            uploadUrl: `https://storage.googleapis.com/sameerv-cow-milking-data/2026-07-22/${body.filename}`,
+          });
+        }),
+        http.put('https://storage.googleapis.com/sameerv-cow-milking-data/2026-07-22/:filename', () => new HttpResponse(null, { status: 200 })),
+        http.post('http://localhost:4000/api/milking-data/import', async () => {
+          resolve();
+          await new Promise((r) => { releaseImport = r; });
+          return HttpResponse.json({ source: 'DelPro', recordsInserted: 9 });
+        })
+      );
+    });
+
+    const user = renderUpload();
+    await user.click(screen.getByRole('button', { name: /milking data/i }));
+
+    const input = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
+    const file = new File(['fake-bytes'], 'delpro-export.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await user.upload(input, file);
+    await user.click(screen.getByRole('button', { name: /upload & import/i }));
+
+    await importStarted;
+    // GCS upload has already succeeded and the import call is in flight: the
+    // picked file is gone, but the drop zone itself is back - just disabled,
+    // not removed from the page - while the import job runs.
+    await screen.findByText(/reading and storing records/i);
+    expect(screen.queryByText('delpro-export.xlsx')).not.toBeInTheDocument();
+    const dropZoneInput = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
+    expect(dropZoneInput).toBeInTheDocument();
+    expect(dropZoneInput).toBeDisabled();
+
+    releaseImport();
+    expect(await screen.findByText(/import complete: 9 DelPro records added/i)).toBeInTheDocument();
+
+    // Once the import job finishes, a fresh drop zone is enabled again.
+    const reEnabledInput = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
+    expect(reEnabledInput).not.toBeDisabled();
+  });
+
   it('switching back to BCS Photos does not show the milking upload zone', async () => {
     const user = renderUpload();
     await user.click(screen.getByRole('button', { name: /milking data/i }));

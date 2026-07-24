@@ -1,3 +1,5 @@
+const { COW_ID_HEADER, isBlank, throwIfMissingCowIds } = require('./cowIdColumn');
+
 const HEADER_TO_FIELD = {
   'Animal Number': 'animalNumber',
   'Group Name': 'groupName',
@@ -12,18 +14,24 @@ const HEADER_TO_FIELD = {
 
 const NUMBER_FIELDS = new Set(['yieldYesterdaySession2', 'yieldYesterdaySession3', 'yieldTodaySession1', 'milkYieldYesterday']);
 
-function isBlank(value) {
-  return value === '' || value === null || value === undefined;
-}
-
-// Unlike SCR, the DelPro sample sheet has no trailing totals row - every row
-// is a real record as long as it actually identifies a cow.
+// Every row is checked against the dedicated Cow Id column (see
+// cowIdColumn.js) - Animal Number stays plain report data and is no longer
+// used to identify the cow.
 function parseDelProRows(rows) {
   const records = [];
-  for (const row of rows) {
-    if (isBlank(row['Animal Number'])) continue;
+  const missingCowIdRows = [];
 
-    const record = { source: 'DelPro' };
+  rows.forEach((row, index) => {
+    // +2: 0-indexed row + the header row that sits above the data in the sheet.
+    const excelRow = index + 2;
+    if (isBlank(row[COW_ID_HEADER])) {
+      missingCowIdRows.push(excelRow);
+      return;
+    }
+
+    // _cowId is transient - read by importHandler.js to find-or-create the
+    // linked Cow, then stripped before the record is saved.
+    const record = { source: 'DelPro', _cowId: String(row[COW_ID_HEADER]).trim() };
     for (const [header, field] of Object.entries(HEADER_TO_FIELD)) {
       const raw = row[header];
       if (NUMBER_FIELDS.has(field)) {
@@ -33,7 +41,10 @@ function parseDelProRows(rows) {
       }
     }
     records.push(record);
-  }
+  });
+
+  throwIfMissingCowIds(missingCowIdRows);
+
   return records;
 }
 

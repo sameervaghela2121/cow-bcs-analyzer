@@ -18,8 +18,8 @@ function makeEntry({ cow, user, action, scoreBefore, scoreAfter, approvedBefore,
     cow: cow._id,
     cowsId: cow.cowsId,
     action,
-    before: { final_bcs: scoreBefore, is_approved: approvedBefore, status: 'completed', updatedBy: (updatedByBefore || user)._id.toString() },
-    after: { final_bcs: scoreAfter, is_approved: approvedAfter, status: 'completed', updatedBy: (updatedByAfter || user)._id.toString() },
+    before: { finalBcs: scoreBefore, isApproved: approvedBefore, status: 'completed', updatedBy: (updatedByBefore || user)._id.toString() },
+    after: { finalBcs: scoreAfter, isApproved: approvedAfter, status: 'completed', updatedBy: (updatedByAfter || user)._id.toString() },
     performedBy: user._id,
   });
 }
@@ -59,10 +59,10 @@ describe('GET /api/audit', () => {
   it('includes the full before/after snapshots on each entry', async () => {
     const res = await request(app).get('/api/audit').set('Authorization', `Bearer ${token}`);
     const overridden = res.body.entries.find((e) => e.action === 'overridden');
-    expect(overridden.before.final_bcs).toBe(3.25);
-    expect(overridden.after.final_bcs).toBe(3.0);
-    expect(overridden.before.is_approved).toBe(false);
-    expect(overridden.after.is_approved).toBe(true);
+    expect(overridden.before.finalBcs).toBe(3.25);
+    expect(overridden.after.finalBcs).toBe(3.0);
+    expect(overridden.before.isApproved).toBe(false);
+    expect(overridden.after.isApproved).toBe(true);
   });
 
   it('filters by action', async () => {
@@ -99,8 +99,8 @@ describe('GET /api/audit/:id', () => {
     expect(res.body.auditLog.id).toBe(entry._id.toString());
     expect(res.body.auditLog.cowsId).toBe('8008');
     expect(res.body.auditLog.action).toBe('overridden');
-    expect(res.body.auditLog.before.final_bcs).toBe(2.75);
-    expect(res.body.auditLog.after.final_bcs).toBe(3.5);
+    expect(res.body.auditLog.before.finalBcs).toBe(2.75);
+    expect(res.body.auditLog.after.finalBcs).toBe(3.5);
     expect(res.body.auditLog.performedBy.email).toBe('audit2@example.com');
   });
 
@@ -124,8 +124,8 @@ describe('GET /api/audit/:id', () => {
       cow: cow._id,
       cowsId: cow.cowsId,
       action: 'overridden',
-      before: { final_bcs: 3.0, is_approved: false, status: 'completed', updatedBy: deletedUserId },
-      after: { final_bcs: 3.5, is_approved: true, status: 'completed', updatedBy: deletedUserId },
+      before: { finalBcs: 3.0, isApproved: false, status: 'completed', updatedBy: deletedUserId },
+      after: { finalBcs: 3.5, isApproved: true, status: 'completed', updatedBy: deletedUserId },
       performedBy: user._id,
     });
 

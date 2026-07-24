@@ -112,8 +112,8 @@ async def _run_analysis(analysis_id: ObjectId, image_uris: list[str]) -> None:
             raise InvalidImageError(f"All {len(image_uris)} image(s) failed to download: {failures}")
 
         result = await assess_bcs(images=payloads)
-        # The whole result (providers + is_mean_true/is_median_true/
-        # is_critical) lands as-is under bcsScore - no mean/median value to
+        # The whole result (providers + isMeanAccurate/isMedianAccurate/
+        # isCritical) lands as-is under bcsScore - no mean/median value to
         # pull out to the document root anymore, since none is computed here.
         update_fields = {"status": "completed", "bcsScore": result.model_dump()}
         if failures:

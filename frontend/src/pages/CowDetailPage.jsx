@@ -182,7 +182,7 @@ function groupByDate(analyses) {
   return groups;
 }
 
-// final_bcs is the reviewer's decided score once approved; before that,
+// finalBcs is the reviewer's decided score once approved; before that,
 // medianScore (computed fresh server-side from whichever providers
 // succeeded - see backend/src/services/bcsScoring.js) is shown as a
 // preview of what accepting the median outright would give.
@@ -234,12 +234,12 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
   const extra = imageUrls.length - 1;
   const coverSrc = hasImages && (!coverFailed && analysis.displayUrls?.[0] ? analysis.displayUrls[0] : imageUrls[0]);
 
-  // The score to show is always final_bcs once a reviewer has picked one;
+  // The score to show is always finalBcs once a reviewer has picked one;
   // before that, medianScore (computed fresh server-side from whichever
   // providers succeeded) stands in as a live preview.
-  const hasFinal = analysis.final_bcs != null;
-  const displayScore = hasFinal ? analysis.final_bcs : analysis.medianScore;
-  const reviewPending = analysis.status === 'completed' && !analysis.is_approved;
+  const hasFinal = analysis.finalBcs != null;
+  const displayScore = hasFinal ? analysis.finalBcs : analysis.medianScore;
+  const reviewPending = analysis.status === 'completed' && !analysis.isApproved;
 
   function openGallery() {
     if (!hasImages) return;
@@ -328,7 +328,7 @@ function AnalysisCard({ analysis: initial, onOpenImages }) {
           <div style={{ display: 'flex', gap: 10, marginTop: 16, paddingTop: 16, borderTop: `1px solid ${color.borderCard}` }}>
             {PROVIDERS.map((key) => {
               const assessment = analysis.bcsScore?.[key];
-              const value = assessment?.status === 'success' ? assessment.final_bcs : null;
+              const value = assessment?.status === 'success' ? assessment.finalBcs : null;
               return <ModelScoreChip key={key} label={PROVIDER_LABELS[key]} value={value} />;
             })}
           </div>

@@ -38,18 +38,18 @@ function makeAnalysis(overrides = {}) {
     id: 'a1',
     createdAt: '2026-07-10T00:00:00Z',
     status: 'completed',
-    is_approved: false,
+    isApproved: false,
     imageUrls: ['https://example.com/a1.jpg'],
-    final_bcs: null,
+    finalBcs: null,
     meanScore: 3.25,
     medianScore: 3.25,
     bcsScore: {
-      claude: { final_bcs: 3.25, confidence: 'High', status: 'success', is_true: null },
-      gemini: { final_bcs: 3.5, confidence: 'Medium', status: 'success', is_true: null },
-      openai: { final_bcs: 3.0, confidence: 'High', status: 'success', is_true: null },
-      is_mean_true: null,
-      is_median_true: null,
-      is_critical: false,
+      claude: { finalBcs: 3.25, confidence: 'High', status: 'success', isTrue: null },
+      gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
+      openai: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+      isMeanAccurate: null,
+      isMedianAccurate: null,
+      isCritical: false,
     },
     ...overrides,
   };
@@ -59,7 +59,7 @@ function makeAnalysis(overrides = {}) {
 // refetch after the mutation (query invalidation) reflects what was
 // persisted - same as hitting the real backend, including the cow-level
 // latestAnalysisIsApproved flag that ReviewPage filters the list on. Both
-// actions set is_approved on the analysis (each is itself a final review
+// actions set isApproved on the analysis (each is itself a final review
 // decision), so both mutate the matching cow too.
 function findAnalysis(analysesByCow, id) {
   for (const analyses of Object.values(analysesByCow)) {
@@ -70,7 +70,7 @@ function findAnalysis(analysesByCow, id) {
 }
 
 function markApproved(cows, analysesByCow, match) {
-  match.is_approved = true;
+  match.isApproved = true;
   const [cowsId] = Object.entries(analysesByCow).find(([, analyses]) => analyses.includes(match)) || [];
   const cow = cows.find((c) => c.cowsId === cowsId);
   if (cow) cow.latestAnalysisIsApproved = true;
@@ -87,7 +87,7 @@ function mockCowsAndAnalyses({ cows, analysesByCow, onOverride, onSelect }) {
       if (!match) return new HttpResponse(null, { status: 404 });
       const body = await request.json();
       onSelect?.(body);
-      match.final_bcs = candidateValueForTest(match, body.source);
+      match.finalBcs = candidateValueForTest(match, body.source);
       markApproved(cows, analysesByCow, match);
       return HttpResponse.json({ bcsAnalysis: match });
     }),
@@ -96,7 +96,7 @@ function mockCowsAndAnalyses({ cows, analysesByCow, onOverride, onSelect }) {
       if (!match) return new HttpResponse(null, { status: 404 });
       const body = await request.json();
       onOverride?.(body);
-      match.final_bcs = body.score;
+      match.finalBcs = body.score;
       markApproved(cows, analysesByCow, match);
       return HttpResponse.json({ bcsAnalysis: match });
     })
@@ -106,7 +106,7 @@ function mockCowsAndAnalyses({ cows, analysesByCow, onOverride, onSelect }) {
 function candidateValueForTest(analysis, source) {
   if (source === 'mean') return analysis.meanScore;
   if (source === 'median') return analysis.medianScore;
-  return analysis.bcsScore?.[source]?.final_bcs ?? null;
+  return analysis.bcsScore?.[source]?.finalBcs ?? null;
 }
 
 describe('ReviewPage', () => {
@@ -136,7 +136,7 @@ describe('ReviewPage', () => {
   it('does not show a cow whose latest analysis has already been approved', async () => {
     mockCowsAndAnalyses({
       cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: true }],
-      analysesByCow: { 4417: [makeAnalysis({ is_approved: true, final_bcs: 3.25 })] },
+      analysesByCow: { 4417: [makeAnalysis({ isApproved: true, finalBcs: 3.25 })] },
     });
     renderReview();
     await waitFor(() => expect(screen.getByText(/nothing waiting for review/i)).toBeInTheDocument());
@@ -167,10 +167,10 @@ describe('ReviewPage', () => {
       analysesByCow: {
         4417: [makeAnalysis({
           bcsScore: {
-            claude: { final_bcs: 3.25, confidence: 'High', status: 'success', is_true: null },
-            gemini: { final_bcs: 3.5, confidence: 'Medium', status: 'success', is_true: null },
-            openai: { final_bcs: null, confidence: null, status: 'error', is_true: null },
-            is_mean_true: null, is_median_true: null, is_critical: false,
+            claude: { finalBcs: 3.25, confidence: 'High', status: 'success', isTrue: null },
+            gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
+            openai: { finalBcs: null, confidence: null, status: 'error', isTrue: null },
+            isMeanAccurate: null, isMedianAccurate: null, isCritical: false,
           },
         })],
       },
@@ -190,10 +190,10 @@ describe('ReviewPage', () => {
           meanScore: 3.25,
           medianScore: 3.0,
           bcsScore: {
-            claude: { final_bcs: 3.0, confidence: 'High', status: 'success', is_true: null },
-            gemini: { final_bcs: 3.5, confidence: 'Medium', status: 'success', is_true: null },
-            openai: { final_bcs: 3.0, confidence: 'High', status: 'success', is_true: null },
-            is_mean_true: null, is_median_true: null, is_critical: false,
+            claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+            gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
+            openai: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+            isMeanAccurate: null, isMedianAccurate: null, isCritical: false,
           },
         })],
       },

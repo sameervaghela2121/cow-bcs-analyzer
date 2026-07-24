@@ -55,11 +55,11 @@ describe('CowDetailPage', () => {
               status: 'completed',
               createdAt: '2026-07-10T00:00:00Z',
               imageUrls: ['https://storage.googleapis.com/a2-img1.jpg'],
-              final_bcs: null,
+              finalBcs: null,
               medianScore: 3.25,
               bcsScore: {
-                gemini: { final_bcs: 3.25, confidence: 'High', status: 'success' },
-                claude: { final_bcs: 3.0, confidence: 'Medium', status: 'success' },
+                gemini: { finalBcs: 3.25, confidence: 'High', status: 'success' },
+                claude: { finalBcs: 3.0, confidence: 'Medium', status: 'success' },
               },
             },
             {
@@ -67,9 +67,9 @@ describe('CowDetailPage', () => {
               status: 'completed',
               createdAt: '2026-07-01T00:00:00Z',
               imageUrls: ['https://storage.googleapis.com/a1-img1.jpg'],
-              final_bcs: 3.0,
+              finalBcs: 3.0,
               medianScore: 3.0,
-              bcsScore: { gemini: { final_bcs: 3.0, confidence: 'Medium', status: 'success' } },
+              bcsScore: { gemini: { finalBcs: 3.0, confidence: 'Medium', status: 'success' } },
             },
           ],
           total: 2,
@@ -83,7 +83,7 @@ describe('CowDetailPage', () => {
     const statusEls = screen.getAllByTestId('analysis-status');
     expect(statusEls).toHaveLength(2);
     expect(statusEls.every((el) => /completed/i.test(el.textContent))).toBe(true);
-    // Shows the single overall score (final_bcs once reviewed, medianScore
+    // Shows the single overall score (finalBcs once reviewed, medianScore
     // as a live preview before that), not a per-provider breakdown.
     expect(screen.getByText('3.25')).toBeInTheDocument();
     expect(screen.getByText('3.0')).toBeInTheDocument();
@@ -118,9 +118,9 @@ describe('CowDetailPage', () => {
             id: 'a3',
             status: done ? 'completed' : 'processing',
             imageUrls: [],
-            final_bcs: null,
+            finalBcs: null,
             medianScore: done ? 3.5 : null,
-            bcsScore: done ? { gemini: { final_bcs: 3.5, confidence: 'High', status: 'success' } } : {},
+            bcsScore: done ? { gemini: { finalBcs: 3.5, confidence: 'High', status: 'success' } } : {},
           },
         });
       })
@@ -163,7 +163,7 @@ describe('CowDetailPage', () => {
                 'https://storage.googleapis.com/img2.jpg',
                 'https://storage.googleapis.com/img3.jpg',
               ],
-              final_bcs: null,
+              finalBcs: null,
               medianScore: 3.25,
               bcsScore: {},
             },
@@ -213,9 +213,9 @@ describe('CowDetailPage', () => {
       http.get('http://localhost:4000/api/cows/4417/analyses', () =>
         HttpResponse.json({
           bcsAnalyses: [
-            { id: 'a3', status: 'completed', createdAt: '2026-07-16T15:00:00Z', imageUrls: ['https://storage.googleapis.com/a3.jpg'], final_bcs: null, medianScore: 3.0, bcsScore: {} },
-            { id: 'a2', status: 'completed', createdAt: '2026-07-16T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a2.jpg'], final_bcs: null, medianScore: 3.25, bcsScore: {} },
-            { id: 'a1', status: 'completed', createdAt: '2026-07-10T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a1.jpg'], final_bcs: null, medianScore: 2.75, bcsScore: {} },
+            { id: 'a3', status: 'completed', createdAt: '2026-07-16T15:00:00Z', imageUrls: ['https://storage.googleapis.com/a3.jpg'], finalBcs: null, medianScore: 3.0, bcsScore: {} },
+            { id: 'a2', status: 'completed', createdAt: '2026-07-16T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a2.jpg'], finalBcs: null, medianScore: 3.25, bcsScore: {} },
+            { id: 'a1', status: 'completed', createdAt: '2026-07-10T09:00:00Z', imageUrls: ['https://storage.googleapis.com/a1.jpg'], finalBcs: null, medianScore: 2.75, bcsScore: {} },
           ],
           total: 3,
         })
@@ -250,7 +250,7 @@ describe('CowDetailPage', () => {
               imageUrls: ['https://storage.googleapis.com/original.jpg'],
               thumbnailUrls: ['https://storage.googleapis.com/300X300/thumb.jpg'],
               displayUrls: ['https://storage.googleapis.com/600X600/display.jpg'],
-              final_bcs: null,
+              finalBcs: null,
               medianScore: 3.25,
               bcsScore: {},
             },

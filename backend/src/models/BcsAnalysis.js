@@ -2,27 +2,29 @@ const mongoose = require('mongoose');
 
 const bcsAnalysisSchema = new mongoose.Schema(
   {
+    // The Cow document is the source of truth for cowsId - it's looked up
+    // via this reference (populate('cow')) rather than denormalized onto
+    // this document, so there's only ever one place a cow's id can drift.
     cow: { type: mongoose.Schema.Types.ObjectId, ref: 'Cow', required: true, index: true },
-    cowsId: { type: String, required: true, trim: true, index: true },
     cowsImages: {
       type: [String],
       required: true,
       validate: { validator: (v) => Array.isArray(v) && v.length > 0, message: 'At least one image is required.' },
     },
     // bcsScore holds the raw per-provider results (claude/gemini/openai,
-    // each with is_true) plus is_mean_true/is_median_true/is_critical - no
+    // each with isTrue) plus isMeanAccurate/isMedianAccurate/isCritical - no
     // mean or median value is stored here, since both are a pure function
-    // of the providers' final_bcs and are computed fresh wherever needed
+    // of the providers' finalBcs and are computed fresh wherever needed
     // (see services/bcsScoring.js) rather than persisted.
     bcsScore: { type: mongoose.Schema.Types.Mixed, default: {} },
     // The single source of truth for "what is this analysis's score" - null
     // until a reviewer acts (selecting a matched candidate, or overriding),
     // at which point every other page reads this one field instead of
     // re-deriving anything.
-    final_bcs: { type: Number, default: null },
+    finalBcs: { type: Number, default: null },
     status: { type: String, enum: ['not_started', 'processing', 'completed', 'failed'], default: 'not_started' },
     errorMessage: { type: String, default: null },
-    is_approved: { type: Boolean, default: false },
+    isApproved: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   },

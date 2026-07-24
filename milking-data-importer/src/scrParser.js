@@ -1,3 +1,5 @@
+const { COW_ID_HEADER, isBlank, throwIfMissingCowIds } = require('./cowIdColumn');
+
 const HEADER_TO_FIELD = {
   'Cow Number': 'cowNumber',
   'Current Group': 'currentGroup',
@@ -10,10 +12,6 @@ const HEADER_TO_FIELD = {
 };
 
 const NUMBER_FIELDS = new Set(['shiftYield', 'shiftYield1', 'shiftYield2', 'shiftYield3']);
-
-function isBlank(value) {
-  return value === '' || value === null || value === undefined;
-}
 
 // SCR's sample date column ("10-07-2026") is ambiguous between DD-MM-YYYY
 // and MM-DD-YYYY - parsed explicitly as DD-MM-YYYY (this is an Indian dairy
@@ -28,13 +26,26 @@ function parseScrDate(raw) {
 
 // A row is a real cow record only if both Date and Current Group are
 // non-blank - SCR's trailing totals row repeats the last Cow Number but
-// leaves both of those blank while holding column sums instead.
+// leaves both of those blank while holding column sums instead. That row is
+// filtered out here, before the Cow Id check below ever sees it, so it
+// never gets mistaken for a real row with missing data.
 function parseScrRows(rows) {
   const records = [];
-  for (const row of rows) {
-    if (isBlank(row['Date']) || isBlank(row['Current Group'])) continue;
+  const missingCowIdRows = [];
 
-    const record = { source: 'SCR' };
+  rows.forEach((row, index) => {
+    if (isBlank(row['Date']) || isBlank(row['Current Group'])) return;
+
+    // +2: 0-indexed row + the header row that sits above the data in the sheet.
+    const excelRow = index + 2;
+    if (isBlank(row[COW_ID_HEADER])) {
+      missingCowIdRows.push(excelRow);
+      return;
+    }
+
+    // _cowId is transient - read by importHandler.js to find-or-create the
+    // linked Cow, then stripped before the record is saved.
+    const record = { source: 'SCR', _cowId: String(row[COW_ID_HEADER]).trim() };
     for (const [header, field] of Object.entries(HEADER_TO_FIELD)) {
       const raw = row[header];
       if (field === 'date') {
@@ -46,7 +57,10 @@ function parseScrRows(rows) {
       }
     }
     records.push(record);
-  }
+  });
+
+  throwIfMissingCowIds(missingCowIdRows);
+
   return records;
 }
 

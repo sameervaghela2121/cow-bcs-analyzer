@@ -27,12 +27,12 @@ function fmtDate(iso) {
 
 function summaryText(entry) {
   if (entry.action === 'overridden') {
-    const after = entry.after?.final_bcs;
+    const after = entry.after?.finalBcs;
     if (after == null) return null;
-    const before = entry.before?.final_bcs;
+    const before = entry.before?.finalBcs;
     return before != null ? `${formatScore(before)} → ${formatScore(after)}` : `Overridden to ${formatScore(after)}`;
   }
-  // provider_selected - describeFinalScore reads {bcsScore, final_bcs} off
+  // provider_selected - describeFinalScore reads {bcsScore, finalBcs} off
   // any object shaped like an analysis, which entry.after already is (see
   // backend auditService.snapshotBcsAnalysis).
   const final = describeFinalScore(entry.after);

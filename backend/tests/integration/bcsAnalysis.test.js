@@ -76,14 +76,14 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(res.body.bcsAnalysis.status).toBe('not_started');
     expect(res.body.bcsAnalysis.bcsScore).toEqual({});
     // root-level, sibling of bcsScore - not nested inside it
-    expect(res.body.bcsAnalysis.final_bcs).toBe(null);
+    expect(res.body.bcsAnalysis.finalBcs).toBe(null);
     expect(res.body.bcsAnalysis.createdBy).toBe(user._id.toString());
-    expect(res.body.bcsAnalysis.is_approved).toBe(false);
+    expect(res.body.bcsAnalysis.isApproved).toBe(false);
 
     const stored = await BcsAnalysis.findById(res.body.bcsAnalysis.id);
     expect(stored).toBeTruthy();
     expect(stored.cow).toBeTruthy();
-    expect(stored.is_approved).toBe(false);
+    expect(stored.isApproved).toBe(false);
   });
 
   it('returns signed thumbnailUrls and displayUrls alongside imageUrls', async () => {
@@ -208,16 +208,15 @@ describe('bcs-analysis upload + create + poll flow', () => {
         const cow = await Cow.create({ cowsId: '3124' });
         return BcsAnalysis.create({
           cow: cow._id,
-          cowsId: '3124',
           cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
           status: 'completed',
           bcsScore: {
-            claude: { final_bcs: 3.0, confidence: 'High', status: 'success', is_true: null },
-            gemini: { final_bcs: 3.5, confidence: 'Medium', status: 'success', is_true: null },
-            openai: { final_bcs: 3.0, confidence: 'High', status: 'success', is_true: null },
-            is_mean_true: null,
-            is_median_true: null,
-            is_critical: false,
+            claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+            gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
+            openai: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+            isMeanAccurate: null,
+            isMedianAccurate: null,
+            isCritical: false,
           },
           createdBy: user._id,
           updatedBy: user._id,
@@ -237,19 +236,19 @@ describe('bcs-analysis upload + create + poll flow', () => {
       expect(res.status).toBe(200);
       // claude, openai, and median all equal 3.0 - one click on claude
       // marks all three true, nothing about them individually clicked.
-      expect(res.body.bcsAnalysis.bcsScore.claude.is_true).toBe(true);
-      expect(res.body.bcsAnalysis.bcsScore.openai.is_true).toBe(true);
-      expect(res.body.bcsAnalysis.bcsScore.is_median_true).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.claude.isTrue).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.openai.isTrue).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.isMedianAccurate).toBe(true);
       // gemini (3.5) and mean (3.25) don't match 3.0 - explicitly false, not null.
-      expect(res.body.bcsAnalysis.bcsScore.gemini.is_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.is_mean_true).toBe(false);
-      expect(res.body.bcsAnalysis.final_bcs).toBe(3.0);
-      expect(res.body.bcsAnalysis.is_approved).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.gemini.isTrue).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.isMeanAccurate).toBe(false);
+      expect(res.body.bcsAnalysis.finalBcs).toBe(3.0);
+      expect(res.body.bcsAnalysis.isApproved).toBe(true);
 
       const stored = await BcsAnalysis.findById(analysis._id);
-      expect(stored.final_bcs).toBe(3.0);
-      expect(stored.bcsScore.claude.is_true).toBe(true);
-      expect(stored.bcsScore.openai.is_true).toBe(true);
+      expect(stored.finalBcs).toBe(3.0);
+      expect(stored.bcsScore.claude.isTrue).toBe(true);
+      expect(stored.bcsScore.openai.isTrue).toBe(true);
     });
 
     it('selecting a candidate with no coincidental matches only marks that one true', async () => {
@@ -261,12 +260,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ source: 'gemini' });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.bcsScore.gemini.is_true).toBe(true);
-      expect(res.body.bcsAnalysis.bcsScore.claude.is_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.openai.is_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.is_mean_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.is_median_true).toBe(false);
-      expect(res.body.bcsAnalysis.final_bcs).toBe(3.5);
+      expect(res.body.bcsAnalysis.bcsScore.gemini.isTrue).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.claude.isTrue).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.openai.isTrue).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.isMeanAccurate).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.isMedianAccurate).toBe(false);
+      expect(res.body.bcsAnalysis.finalBcs).toBe(3.5);
     });
 
     it('can select the computed mean directly, not just a provider or the median', async () => {
@@ -278,11 +277,11 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ source: 'mean' });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.bcsScore.is_mean_true).toBe(true);
-      expect(res.body.bcsAnalysis.bcsScore.is_median_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.claude.is_true).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.isMeanAccurate).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.isMedianAccurate).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.claude.isTrue).toBe(false);
       // (3.0 + 3.5 + 3.0) / 3 = 3.1666... -> rounded to the nearest 0.25 = 3.25
-      expect(res.body.bcsAnalysis.final_bcs).toBe(3.25);
+      expect(res.body.bcsAnalysis.finalBcs).toBe(3.25);
     });
 
     it('switching the pick recomputes the whole match set from scratch, not additively', async () => {
@@ -298,12 +297,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ source: 'gemini' }); // switching the pick entirely
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.bcsScore.gemini.is_true).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.gemini.isTrue).toBe(true);
       // the previous pick's matches must not linger as stale true flags
-      expect(res.body.bcsAnalysis.bcsScore.claude.is_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.openai.is_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.is_median_true).toBe(false);
-      expect(res.body.bcsAnalysis.final_bcs).toBe(3.5);
+      expect(res.body.bcsAnalysis.bcsScore.claude.isTrue).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.openai.isTrue).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.isMedianAccurate).toBe(false);
+      expect(res.body.bcsAnalysis.finalBcs).toBe(3.5);
     });
 
     it('rejects an unknown source', async () => {
@@ -318,8 +317,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
     it('rejects selecting a provider that has no successful score', async () => {
       const analysis = await makeCompletedAnalysis({
         bcsScore: {
-          claude: { final_bcs: 3.0, confidence: 'High', status: 'success', is_true: null },
-          openai: { final_bcs: null, confidence: null, status: 'error', error_message: 'rate limit', is_true: null },
+          claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+          openai: { finalBcs: null, confidence: null, status: 'error', errorMessage: 'rate limit', isTrue: null },
         },
       })();
 
@@ -330,14 +329,13 @@ describe('bcs-analysis upload + create + poll flow', () => {
 
       expect(res.status).toBe(400);
       const stored = await BcsAnalysis.findById(analysis._id);
-      expect(stored.is_approved).toBe(false);
+      expect(stored.isApproved).toBe(false);
     });
 
     it('rejects selecting on an analysis that has not completed yet', async () => {
       const cow = await Cow.create({ cowsId: '3124' });
       const analysis = await BcsAnalysis.create({
         cow: cow._id,
-        cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'processing',
         createdBy: user._id,
@@ -389,12 +387,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
       expect(entries).toHaveLength(1);
       expect(entries[0].action).toBe('provider_selected');
       expect(entries[0].performedBy.toString()).toBe(user._id.toString());
-      expect(entries[0].before.final_bcs).toBe(null);
-      expect(entries[0].after.final_bcs).toBe(3.0);
-      expect(entries[0].before.is_approved).toBe(false);
-      expect(entries[0].after.is_approved).toBe(true);
-      expect(entries[0].before.bcsScore.claude.is_true).toBe(null);
-      expect(entries[0].after.bcsScore.claude.is_true).toBe(true);
+      expect(entries[0].before.finalBcs).toBe(null);
+      expect(entries[0].after.finalBcs).toBe(3.0);
+      expect(entries[0].before.isApproved).toBe(false);
+      expect(entries[0].after.isApproved).toBe(true);
+      expect(entries[0].before.bcsScore.claude.isTrue).toBe(null);
+      expect(entries[0].after.bcsScore.claude.isTrue).toBe(true);
     });
 
     it('still selects successfully even if the audit log write fails', async () => {
@@ -407,7 +405,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ source: 'gemini' });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.final_bcs).toBe(3.5);
+      expect(res.body.bcsAnalysis.finalBcs).toBe(3.5);
 
       createSpy.mockRestore();
     });
@@ -419,15 +417,14 @@ describe('bcs-analysis upload + create + poll flow', () => {
         const cow = await Cow.create({ cowsId: '3124' });
         return BcsAnalysis.create({
           cow: cow._id,
-          cowsId: '3124',
           cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
           status: 'completed',
           bcsScore: {
-            claude: { final_bcs: 3.0, confidence: 'High', status: 'success', is_true: null },
-            gemini: { final_bcs: 3.5, confidence: 'Medium', status: 'success', is_true: null },
-            is_mean_true: null,
-            is_median_true: null,
-            is_critical: false,
+            claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+            gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
+            isMeanAccurate: null,
+            isMedianAccurate: null,
+            isCritical: false,
           },
           createdBy: user._id,
           updatedBy: user._id,
@@ -436,7 +433,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
       };
     }
 
-    it('sets final_bcs to the typed value and clears every candidate flag to false', async () => {
+    it('sets finalBcs to the typed value and clears every candidate flag to false', async () => {
       const analysis = await makeCompletedAnalysis()();
 
       const res = await request(app)
@@ -445,18 +442,18 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ score: 4.0 });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.final_bcs).toBe(4.0);
+      expect(res.body.bcsAnalysis.finalBcs).toBe(4.0);
       // a manual override isn't matched against anything - not even a
       // coincidentally-equal candidate gets marked true.
-      expect(res.body.bcsAnalysis.bcsScore.claude.is_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.gemini.is_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.is_mean_true).toBe(false);
-      expect(res.body.bcsAnalysis.bcsScore.is_median_true).toBe(false);
-      expect(res.body.bcsAnalysis.is_approved).toBe(true);
+      expect(res.body.bcsAnalysis.bcsScore.claude.isTrue).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.gemini.isTrue).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.isMeanAccurate).toBe(false);
+      expect(res.body.bcsAnalysis.bcsScore.isMedianAccurate).toBe(false);
+      expect(res.body.bcsAnalysis.isApproved).toBe(true);
 
       const stored = await BcsAnalysis.findById(analysis._id);
-      expect(stored.final_bcs).toBe(4.0);
-      expect(stored.is_approved).toBe(true);
+      expect(stored.finalBcs).toBe(4.0);
+      expect(stored.isApproved).toBe(true);
     });
 
     it('rounds an off-scale score to the nearest 0.25', async () => {
@@ -468,7 +465,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ score: 3.4 });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.final_bcs).toBe(3.5);
+      expect(res.body.bcsAnalysis.finalBcs).toBe(3.5);
     });
 
     it('rejects a score outside 1-5', async () => {
@@ -486,7 +483,6 @@ describe('bcs-analysis upload + create + poll flow', () => {
       const cow = await Cow.create({ cowsId: '3124' });
       const analysis = await BcsAnalysis.create({
         cow: cow._id,
-        cowsId: '3124',
         cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
         status: 'processing',
         createdBy: user._id,
@@ -537,10 +533,10 @@ describe('bcs-analysis upload + create + poll flow', () => {
       const entries = await AuditLog.find({ bcsAnalysis: analysis._id });
       expect(entries).toHaveLength(1);
       expect(entries[0].action).toBe('overridden');
-      expect(entries[0].before.final_bcs).toBe(null);
-      expect(entries[0].after.final_bcs).toBe(4.5);
-      expect(entries[0].after.bcsScore.claude.is_true).toBe(false);
-      expect(entries[0].after.bcsScore.is_median_true).toBe(false);
+      expect(entries[0].before.finalBcs).toBe(null);
+      expect(entries[0].after.finalBcs).toBe(4.5);
+      expect(entries[0].after.bcsScore.claude.isTrue).toBe(false);
+      expect(entries[0].after.bcsScore.isMedianAccurate).toBe(false);
     });
 
     it('still overrides successfully even if the audit log write fails', async () => {
@@ -553,7 +549,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
         .send({ score: 3.5 });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.final_bcs).toBe(3.5);
+      expect(res.body.bcsAnalysis.finalBcs).toBe(3.5);
 
       createSpy.mockRestore();
     });

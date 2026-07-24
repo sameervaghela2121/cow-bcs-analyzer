@@ -86,6 +86,24 @@ describe('POST /api/milking-data/import', () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
+  it('passes a bad-file validation error through to the user as its own meaningful message, not a generic one', async () => {
+    const err = new Error(
+      'This file is missing the Cow Number for row 3. Please fill in the Cow Number for every row and re-upload the file. No records were imported.'
+    );
+    err.status = 400;
+    triggerMilkingImport.mockRejectedValue(err);
+
+    const res = await request(app)
+      .post('/api/milking-data/import')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ objectPath: '2026-07-22/scr.xlsx' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(
+      'This file is missing the Cow Number for row 3. Please fill in the Cow Number for every row and re-upload the file. No records were imported.'
+    );
+  });
+
   it('rejects a malformed objectPath', async () => {
     const res = await request(app)
       .post('/api/milking-data/import')

@@ -33,7 +33,7 @@ function candidateValue(analysis, key) {
   if (key === 'mean') return analysis.meanScore;
   if (key === 'median') return analysis.medianScore;
   const assessment = analysis.bcsScore?.[key];
-  return assessment?.status === 'success' ? assessment.final_bcs : null;
+  return assessment?.status === 'success' ? assessment.finalBcs : null;
 }
 
 // A toggle chip, not a raw checkbox - `checked` reflects whether this
@@ -75,7 +75,7 @@ function CandidateChip({ label, value, checked, disabled, onClick, style }) {
 // auto-matches any provider that happens to agree with it) and hitting Save
 // is a strict superset of what it used to do. Selecting a candidate
 // (PATCH .../select) and Overriding (PATCH .../override) both set
-// is_approved on the record - each is itself a final review decision, so
+// isApproved on the record - each is itself a final review decision, so
 // both persist and drop this row off the review list once the cows list
 // reflects it.
 function ReviewRow({ cow }) {
@@ -119,7 +119,7 @@ function ReviewRow({ cow }) {
   // A row shouldn't render its controls once reviewed - it's about to drop
   // off the list on the next refetch anyway, but this guards against it
   // still being visible mid-transition instead of relying solely on that.
-  if (!latest || latest.is_approved) return null;
+  if (!latest || latest.isApproved) return null;
 
   const anyActionPending = selectMutation.isPending || overrideMutation.isPending;
   const candidates = CANDIDATES.map((c) => ({ ...c, value: candidateValue(latest, c.key) }));

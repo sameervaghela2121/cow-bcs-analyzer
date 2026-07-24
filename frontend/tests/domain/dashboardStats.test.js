@@ -4,20 +4,20 @@ import {
 } from '../../src/domain/dashboardStats.js';
 
 describe('effectiveScore', () => {
-  it('prefers final_bcs once a reviewer has decided, over any live preview', () => {
+  it('prefers finalBcs once a reviewer has decided, over any live preview', () => {
     expect(effectiveScore({
-      final_bcs: 3.5,
-      bcsScore: { claude: { status: 'success', final_bcs: 2.0 } },
+      finalBcs: 3.5,
+      bcsScore: { claude: { status: 'success', finalBcs: 2.0 } },
     })).toBe(3.5);
   });
 
   it('before any review, computes the live median fresh from whichever providers succeeded', () => {
     expect(effectiveScore({
-      final_bcs: null,
+      finalBcs: null,
       bcsScore: {
-        claude: { status: 'success', final_bcs: 2.0 },
-        gemini: { status: 'success', final_bcs: 3.0 },
-        openai: { status: 'success', final_bcs: 4.0 },
+        claude: { status: 'success', finalBcs: 2.0 },
+        gemini: { status: 'success', finalBcs: 3.0 },
+        openai: { status: 'success', finalBcs: 4.0 },
       },
     })).toBe(3.0); // median of [2.0, 3.0, 4.0]
   });
@@ -31,21 +31,21 @@ describe('effectiveScore', () => {
 describe('latestAnalysisPerCow', () => {
   it('keeps only the most recent analysis per cowsId', () => {
     const latest = latestAnalysisPerCow([
-      { cowsId: '1001', createdAt: '2026-01-01T00:00:00Z', final_bcs: 3.0 },
-      { cowsId: '1001', createdAt: '2026-02-01T00:00:00Z', final_bcs: 3.5 },
-      { cowsId: '1002', createdAt: '2026-01-15T00:00:00Z', final_bcs: 2.0 },
+      { cowsId: '1001', createdAt: '2026-01-01T00:00:00Z', finalBcs: 3.0 },
+      { cowsId: '1001', createdAt: '2026-02-01T00:00:00Z', finalBcs: 3.5 },
+      { cowsId: '1002', createdAt: '2026-01-15T00:00:00Z', finalBcs: 2.0 },
     ]);
-    expect(latest.get('1001').final_bcs).toBe(3.5);
-    expect(latest.get('1002').final_bcs).toBe(2.0);
+    expect(latest.get('1001').finalBcs).toBe(3.5);
+    expect(latest.get('1002').finalBcs).toBe(2.0);
   });
 });
 
 describe('bcsDistribution', () => {
   it('buckets each cow into thin/ideal/heavy/unscored', () => {
     const latest = new Map([
-      ['1001', { final_bcs: 2.0 }],
-      ['1002', { final_bcs: 3.0 }],
-      ['1003', { final_bcs: 4.0 }],
+      ['1001', { finalBcs: 2.0 }],
+      ['1002', { finalBcs: 3.0 }],
+      ['1003', { finalBcs: 4.0 }],
       ['1004', { bcsScore: {} }],
     ]);
     expect(bcsDistribution(latest)).toEqual({ thin: 1, ideal: 1, heavy: 1, unscored: 1 });
@@ -64,11 +64,11 @@ describe('pipelineStatusCounts', () => {
 describe('reviewerAgreementStats', () => {
   it('counts a matched median (nothing else coincided) as "median"', () => {
     const agreement = reviewerAgreementStats([{
-      is_approved: true,
-      final_bcs: 2.25,
+      isApproved: true,
+      finalBcs: 2.25,
       bcsScore: {
-        is_median_true: true, is_mean_true: false,
-        claude: { is_true: false }, gemini: { is_true: false }, openai: { is_true: false },
+        isMedianAccurate: true, isMeanAccurate: false,
+        claude: { isTrue: false }, gemini: { isTrue: false }, openai: { isTrue: false },
       },
     }]);
     expect(agreement.find((a) => a.key === 'median')).toEqual({ key: 'median', count: 1, rate: 1 });
@@ -78,9 +78,9 @@ describe('reviewerAgreementStats', () => {
 
   it('counts a matched mean as "mean"', () => {
     const agreement = reviewerAgreementStats([{
-      is_approved: true,
-      final_bcs: 2.75,
-      bcsScore: { is_mean_true: true, is_median_true: false },
+      isApproved: true,
+      finalBcs: 2.75,
+      bcsScore: { isMeanAccurate: true, isMedianAccurate: false },
     }]);
     expect(agreement.find((a) => a.key === 'mean')).toEqual({ key: 'mean', count: 1, rate: 1 });
     expect(agreement.find((a) => a.key === 'median').count).toBe(0);
@@ -88,9 +88,9 @@ describe('reviewerAgreementStats', () => {
 
   it('counts a manual override (nothing matched at all) as "override"', () => {
     const agreement = reviewerAgreementStats([{
-      is_approved: true,
-      final_bcs: 3.5,
-      bcsScore: { is_median_true: false, is_mean_true: false, claude: { is_true: false } },
+      isApproved: true,
+      finalBcs: 3.5,
+      bcsScore: { isMedianAccurate: false, isMeanAccurate: false, claude: { isTrue: false } },
     }]);
     expect(agreement.find((a) => a.key === 'override')).toEqual({ key: 'override', count: 1, rate: 1 });
     expect(agreement.find((a) => a.key === 'median').count).toBe(0);
@@ -99,9 +99,9 @@ describe('reviewerAgreementStats', () => {
 
   it('credits multiple buckets at once when several candidates coincidentally matched the same click', () => {
     const agreement = reviewerAgreementStats([{
-      is_approved: true,
-      final_bcs: 3.0,
-      bcsScore: { is_median_true: true, claude: { is_true: true }, gemini: { is_true: false }, openai: { is_true: false } },
+      isApproved: true,
+      finalBcs: 3.0,
+      bcsScore: { isMedianAccurate: true, claude: { isTrue: true }, gemini: { isTrue: false }, openai: { isTrue: false } },
     }]);
     expect(agreement.find((a) => a.key === 'median').count).toBe(1);
     expect(agreement.find((a) => a.key === 'claude').count).toBe(1);
@@ -110,9 +110,9 @@ describe('reviewerAgreementStats', () => {
 
   it('rates a directly-selected provider by how often it was the reviewer\'s final pick, among reviewed analyses only', () => {
     const analyses = [
-      { is_approved: true, bcsScore: { gemini: { is_true: true } } },
-      { is_approved: true, bcsScore: { gemini: { is_true: true } } },
-      { is_approved: false, bcsScore: { claude: { is_true: false } } }, // not reviewed - excluded
+      { isApproved: true, bcsScore: { gemini: { isTrue: true } } },
+      { isApproved: true, bcsScore: { gemini: { isTrue: true } } },
+      { isApproved: false, bcsScore: { claude: { isTrue: false } } }, // not reviewed - excluded
     ];
     const agreement = reviewerAgreementStats(analyses);
     expect(agreement.find((a) => a.key === 'gemini')).toEqual({ key: 'gemini', count: 2, rate: 1 });
@@ -120,7 +120,7 @@ describe('reviewerAgreementStats', () => {
   });
 
   it('reports null rates with no reviewed analyses yet, rather than dividing by zero', () => {
-    const agreement = reviewerAgreementStats([{ is_approved: false, bcsScore: {} }]);
+    const agreement = reviewerAgreementStats([{ isApproved: false, bcsScore: {} }]);
     expect(agreement.every((a) => a.rate === null && a.count === 0)).toBe(true);
   });
 });
@@ -128,23 +128,23 @@ describe('reviewerAgreementStats', () => {
 describe('modelInfluenceStats', () => {
   it('credits a directly-selected provider immediately', () => {
     const influence = modelInfluenceStats([{
-      is_approved: true,
-      final_bcs: 3.5,
-      bcsScore: { gemini: { status: 'success', final_bcs: 3.5, is_true: true } },
+      isApproved: true,
+      finalBcs: 3.5,
+      bcsScore: { gemini: { status: 'success', finalBcs: 3.5, isTrue: true } },
     }]);
     expect(influence.find((i) => i.key === 'gemini')).toEqual({ key: 'gemini', count: 1, rate: 1 });
   });
 
   it('credits whichever single provider an accepted median\'s value equals - the common 3-success case', () => {
-    // median of [2.0, 2.25, 4.0] is 2.25, which is exactly gemini's own final_bcs
+    // median of [2.0, 2.25, 4.0] is 2.25, which is exactly gemini's own finalBcs
     const influence = modelInfluenceStats([{
-      is_approved: true,
-      final_bcs: 2.25,
+      isApproved: true,
+      finalBcs: 2.25,
       bcsScore: {
-        claude: { status: 'success', final_bcs: 2.0 },
-        gemini: { status: 'success', final_bcs: 2.25 },
-        openai: { status: 'success', final_bcs: 4.0 },
-        is_median_true: true,
+        claude: { status: 'success', finalBcs: 2.0 },
+        gemini: { status: 'success', finalBcs: 2.25 },
+        openai: { status: 'success', finalBcs: 4.0 },
+        isMedianAccurate: true,
       },
     }]);
     expect(influence.find((i) => i.key === 'gemini')).toEqual({ key: 'gemini', count: 1, rate: 1 });
@@ -154,12 +154,12 @@ describe('modelInfluenceStats', () => {
 
   it('falls back to unattributed for a genuinely blended value matching no single provider', () => {
     const influence = modelInfluenceStats([{
-      is_approved: true,
-      final_bcs: 3.5, // a manual override, matches none of the three
+      isApproved: true,
+      finalBcs: 3.5, // a manual override, matches none of the three
       bcsScore: {
-        claude: { status: 'success', final_bcs: 2.0 },
-        gemini: { status: 'success', final_bcs: 2.25 },
-        openai: { status: 'success', final_bcs: 4.0 },
+        claude: { status: 'success', finalBcs: 2.0 },
+        gemini: { status: 'success', finalBcs: 2.25 },
+        openai: { status: 'success', finalBcs: 4.0 },
       },
     }]);
     expect(influence.find((i) => i.key === 'unattributed')).toEqual({ key: 'unattributed', count: 1, rate: 1 });
@@ -167,12 +167,12 @@ describe('modelInfluenceStats', () => {
 
   it('falls back to unattributed rather than guessing when two providers tie on the same value', () => {
     const influence = modelInfluenceStats([{
-      is_approved: true,
-      final_bcs: 3.0,
+      isApproved: true,
+      finalBcs: 3.0,
       bcsScore: {
-        claude: { status: 'success', final_bcs: 3.0 },
-        gemini: { status: 'success', final_bcs: 3.0 },
-        openai: { status: 'error', final_bcs: null },
+        claude: { status: 'success', finalBcs: 3.0 },
+        gemini: { status: 'success', finalBcs: 3.0 },
+        openai: { status: 'error', finalBcs: null },
       },
     }]);
     expect(influence.find((i) => i.key === 'unattributed')).toEqual({ key: 'unattributed', count: 1, rate: 1 });
@@ -184,9 +184,9 @@ describe('modelInfluenceStats', () => {
 describe('scoreTrend', () => {
   it('averages effectiveScore per ISO week, sorted chronologically', () => {
     const trend = scoreTrend([
-      { createdAt: '2026-01-05T00:00:00Z', final_bcs: 3.0 }, // week of Jan 5, 2026
-      { createdAt: '2026-01-06T00:00:00Z', final_bcs: 4.0 }, // same week
-      { createdAt: '2026-02-02T00:00:00Z', final_bcs: 2.0 }, // later week
+      { createdAt: '2026-01-05T00:00:00Z', finalBcs: 3.0 }, // week of Jan 5, 2026
+      { createdAt: '2026-01-06T00:00:00Z', finalBcs: 4.0 }, // same week
+      { createdAt: '2026-02-02T00:00:00Z', finalBcs: 2.0 }, // later week
     ]);
     expect(trend).toHaveLength(2);
     expect(trend[0].avgScore).toBeCloseTo(3.5);
@@ -208,9 +208,9 @@ describe('cowsNeedingAttention', () => {
       { cowsId: '1004', latestAnalysisStatus: 'failed' },
     ];
     const latest = new Map([
-      ['1001', { final_bcs: 2.0 }], // thin
-      ['1002', { final_bcs: 3.0 }], // ideal - not flagged
-      ['1003', { final_bcs: 4.5 }], // heavy
+      ['1001', { finalBcs: 2.0 }], // thin
+      ['1002', { finalBcs: 3.0 }], // ideal - not flagged
+      ['1003', { finalBcs: 4.5 }], // heavy
     ]);
     const flagged = cowsNeedingAttention(cows, latest);
     expect(flagged.map((f) => f.cow.cowsId)).toEqual(['1001', '1003', '1004']);
@@ -223,27 +223,27 @@ describe('scoreVolatility', () => {
 
   it('flags a cow whose last two scored analyses swing by at least the threshold', () => {
     const flagged = scoreVolatility(cows, [
-      { cowsId: '1001', createdAt: '2026-01-01T00:00:00Z', final_bcs: 3.0 },
-      { cowsId: '1001', createdAt: '2026-02-01T00:00:00Z', final_bcs: 4.0 }, // +1.0, most recent
+      { cowsId: '1001', createdAt: '2026-01-01T00:00:00Z', finalBcs: 3.0 },
+      { cowsId: '1001', createdAt: '2026-02-01T00:00:00Z', finalBcs: 4.0 }, // +1.0, most recent
     ]);
     expect(flagged).toEqual([{ cow: cows[0], previousScore: 3.0, latestScore: 4.0, delta: 1.0 }]);
   });
 
   it('leaves a cow out when the swing is under the threshold, or it has fewer than two scored analyses', () => {
     const flagged = scoreVolatility(cows, [
-      { cowsId: '1001', createdAt: '2026-01-01T00:00:00Z', final_bcs: 3.0 },
-      { cowsId: '1001', createdAt: '2026-02-01T00:00:00Z', final_bcs: 3.25 }, // +0.25, under the 0.5 default
-      { cowsId: '1002', createdAt: '2026-01-01T00:00:00Z', final_bcs: 2.0 }, // only one scored analysis
+      { cowsId: '1001', createdAt: '2026-01-01T00:00:00Z', finalBcs: 3.0 },
+      { cowsId: '1001', createdAt: '2026-02-01T00:00:00Z', finalBcs: 3.25 }, // +0.25, under the 0.5 default
+      { cowsId: '1002', createdAt: '2026-01-01T00:00:00Z', finalBcs: 2.0 }, // only one scored analysis
     ]);
     expect(flagged).toEqual([]);
   });
 
   it('sorts the most dramatic swings first and respects a custom threshold', () => {
     const flagged = scoreVolatility(cows, [
-      { cowsId: '1001', createdAt: '2026-01-01T00:00:00Z', final_bcs: 3.0 },
-      { cowsId: '1001', createdAt: '2026-02-01T00:00:00Z', final_bcs: 3.25 }, // +0.25
-      { cowsId: '1002', createdAt: '2026-01-01T00:00:00Z', final_bcs: 4.0 },
-      { cowsId: '1002', createdAt: '2026-02-01T00:00:00Z', final_bcs: 2.5 }, // -1.5
+      { cowsId: '1001', createdAt: '2026-01-01T00:00:00Z', finalBcs: 3.0 },
+      { cowsId: '1001', createdAt: '2026-02-01T00:00:00Z', finalBcs: 3.25 }, // +0.25
+      { cowsId: '1002', createdAt: '2026-01-01T00:00:00Z', finalBcs: 4.0 },
+      { cowsId: '1002', createdAt: '2026-02-01T00:00:00Z', finalBcs: 2.5 }, // -1.5
     ], 0.25);
     expect(flagged.map((f) => f.cow.cowsId)).toEqual(['1002', '1001']);
   });

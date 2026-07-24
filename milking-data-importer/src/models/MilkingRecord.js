@@ -4,12 +4,14 @@ const mongoose = require('mongoose');
 // backend/src/models/MilkingRecord.js kept in sync by hand - the two
 // packages can't share code across the deploy boundary. This is the
 // authoritative copy the Cloud Function actually writes with.
-//
-// No cow reference/linkage for now (not needed yet) - each row is stored
-// standalone, identified only by its own cowNumber/animalNumber field.
 const milkingRecordSchema = new mongoose.Schema(
   {
     source: { type: String, enum: ['SCR', 'DelPro'], required: true },
+
+    // Resolved via find-or-create against the sheet's own dedicated "Cow Id"
+    // column - deliberately NOT cowNumber/animalNumber below, which stay
+    // plain report fields. See cowIdColumn.js.
+    cow: { type: mongoose.Schema.Types.ObjectId, ref: 'Cow' },
 
     // SCR fields
     cowNumber: { type: String },

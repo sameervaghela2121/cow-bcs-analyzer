@@ -18,8 +18,8 @@ function fmtDateTime(iso) {
 function successfulScoresFrom(bcsScore) {
   return PROVIDERS
     .map((p) => bcsScore?.[p])
-    .filter((a) => a?.status === 'success' && a?.final_bcs != null)
-    .map((a) => a.final_bcs);
+    .filter((a) => a?.status === 'success' && a?.finalBcs != null)
+    .map((a) => a.finalBcs);
 }
 
 // "Not measured" for the before side is the normal case (nothing is ever
@@ -31,23 +31,23 @@ function pickLabel(matched, isApproved) {
 }
 
 // Which AI model(s) matched the reviewer's pick - mirrors bcsScore's
-// per-provider is_true flags (see bcsAnalysisController.applySelection).
+// per-provider isTrue flags (see bcsAnalysisController.applySelection).
 // Kept separate from statisticsPickLabel below so an actual model match
 // (Claude/Gemini/OpenAI) is never lumped in with a Mean/Median match.
 function modelPickLabel(snapshot) {
   const matched = Object.entries(PROVIDER_LABELS)
-    .filter(([key]) => snapshot?.bcsScore?.[key]?.is_true)
+    .filter(([key]) => snapshot?.bcsScore?.[key]?.isTrue)
     .map(([, label]) => label);
-  return pickLabel(matched, snapshot?.is_approved);
+  return pickLabel(matched, snapshot?.isApproved);
 }
 
-// Which computed statistic(s) matched the reviewer's pick - is_mean_true/
-// is_median_true, the algorithmic counterpart to modelPickLabel above.
+// Which computed statistic(s) matched the reviewer's pick - isMeanAccurate/
+// isMedianAccurate, the algorithmic counterpart to modelPickLabel above.
 function statisticsPickLabel(snapshot) {
   const matched = [];
-  if (snapshot?.bcsScore?.is_mean_true) matched.push('Mean');
-  if (snapshot?.bcsScore?.is_median_true) matched.push('Median');
-  return pickLabel(matched, snapshot?.is_approved);
+  if (snapshot?.bcsScore?.isMeanAccurate) matched.push('Mean');
+  if (snapshot?.bcsScore?.isMedianAccurate) matched.push('Median');
+  return pickLabel(matched, snapshot?.isApproved);
 }
 
 const changedTint = softTint(status.attention);
@@ -105,8 +105,8 @@ export default function AuditDetailPage() {
   const afterScores = successfulScoresFrom(entry.after?.bcsScore);
 
   const rows = [
-    { label: 'Approved', before: entry.before?.is_approved ? 'Yes' : 'No', after: entry.after?.is_approved ? 'Yes' : 'No' },
-    { label: 'Final BCS Score', before: formatScore(entry.before?.final_bcs), after: formatScore(entry.after?.final_bcs) },
+    { label: 'Approved', before: entry.before?.isApproved ? 'Yes' : 'No', after: entry.after?.isApproved ? 'Yes' : 'No' },
+    { label: 'Final BCS Score', before: formatScore(entry.before?.finalBcs), after: formatScore(entry.after?.finalBcs) },
     { label: 'Mean', before: formatScore(meanOfScores(beforeScores)), after: formatScore(meanOfScores(afterScores)) },
     { label: 'Median', before: formatScore(medianOfScores(beforeScores)), after: formatScore(medianOfScores(afterScores)) },
     { label: 'Model', before: modelPickLabel(entry.before), after: modelPickLabel(entry.after) },

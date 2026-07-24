@@ -46,22 +46,22 @@ export function medianOfScores(scores) {
   return roundQuarter(raw);
 }
 
-// analysis.final_bcs is always the score to show (server-computed the same
+// analysis.finalBcs is always the score to show (server-computed the same
 // way, never re-derived here) - this only figures out the human-readable
-// "why", from whichever is_true/is_mean_true/is_median_true flags matched
+// "why", from whichever isTrue/isMeanAccurate/isMedianAccurate flags matched
 // when the reviewer picked it. Several can be true at once (e.g. Median
 // picked and a provider happened to agree) - join them. None true at all
 // means it was a manual Override, which isn't matched against anything.
 export function describeFinalScore(analysis) {
-  if (!analysis || analysis.final_bcs == null) return null;
+  if (!analysis || analysis.finalBcs == null) return null;
   const bcsScore = analysis.bcsScore || {};
   const matched = [];
   for (const [key, label] of Object.entries(PROVIDER_LABELS)) {
-    if (bcsScore[key]?.is_true) matched.push(label);
+    if (bcsScore[key]?.isTrue) matched.push(label);
   }
-  if (bcsScore.is_mean_true) matched.push('Mean');
-  if (bcsScore.is_median_true) matched.push('Median');
-  return { label: matched.length > 0 ? matched.join(' + ') : 'Override', score: analysis.final_bcs };
+  if (bcsScore.isMeanAccurate) matched.push('Mean');
+  if (bcsScore.isMedianAccurate) matched.push('Median');
+  return { label: matched.length > 0 ? matched.join(' + ') : 'Override', score: analysis.finalBcs };
 }
 
 // provider_selected reads as an AI decision endorsed by a reviewer, so it

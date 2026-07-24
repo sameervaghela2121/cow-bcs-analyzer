@@ -86,24 +86,24 @@ async def test_assess_bcs_fans_out_to_all_providers():
 
     # gemini + claude succeeded, openai failed - each provider is a top-level key
     assert body["gemini"]["status"] == "success"
-    assert body["gemini"]["final_bcs"] == 3.0
+    assert body["gemini"]["finalBcs"] == 3.0
     assert body["claude"]["status"] == "success"
-    assert body["claude"]["final_bcs"] == 3.5
+    assert body["claude"]["finalBcs"] == 3.5
     assert body["openai"]["status"] == "error"
-    assert body["openai"]["final_bcs"] is None
+    assert body["openai"]["finalBcs"] is None
     assert body["openai"]["confidence"] is None
-    assert "simulated quota error" in body["openai"]["error_message"]
+    assert "simulated quota error" in body["openai"]["errorMessage"]
 
     # spread between the 2 successful scores is exactly 0.5 - not critical
     # ("more than 0.5", not "0.5 or more").
-    assert body["is_critical"] is False
+    assert body["isCritical"] is False
     # nothing has been reviewed yet - every selectable flag starts at None,
     # not False, so "not yet decided" stays distinguishable from "reviewed
     # and rejected".
-    assert body["is_mean_true"] is None
-    assert body["is_median_true"] is None
-    assert body["gemini"]["is_true"] is None
-    assert body["claude"]["is_true"] is None
+    assert body["isMeanAccurate"] is None
+    assert body["isMedianAccurate"] is None
+    assert body["gemini"]["isTrue"] is None
+    assert body["claude"]["isTrue"] is None
 
 
 @pytest.mark.asyncio
@@ -122,16 +122,16 @@ async def test_assess_bcs_can_be_narrowed_to_a_subset():
     assert response.status_code == 200
     body = response.json()
     assert body["gemini"]["status"] == "success"
-    assert body["gemini"]["final_bcs"] == 3.0
+    assert body["gemini"]["finalBcs"] == 3.0
     # claude and openai were not queried - should have default values
-    assert body["claude"]["final_bcs"] is None
+    assert body["claude"]["finalBcs"] is None
     assert body["claude"]["confidence"] is None
-    assert body["openai"]["final_bcs"] is None
+    assert body["openai"]["finalBcs"] is None
     assert body["openai"]["confidence"] is None
 
-    # only 1 provider succeeded - is_critical needs at least 2 scores to
+    # only 1 provider succeeded - isCritical needs at least 2 scores to
     # measure disagreement between, so it stays False by definition.
-    assert body["is_critical"] is False
+    assert body["isCritical"] is False
 
 
 @pytest.mark.asyncio
@@ -162,7 +162,7 @@ async def test_is_critical_false_when_all_three_agree_closely():
     assert body["openai"]["status"] == "success"
 
     # spread across [3.0, 3.25, 3.0] is 0.25 - well under the 0.5 threshold
-    assert body["is_critical"] is False
+    assert body["isCritical"] is False
 
 
 @pytest.mark.asyncio
@@ -190,7 +190,7 @@ async def test_is_critical_true_when_providers_disagree_by_more_than_half_a_poin
     body = response.json()
 
     # spread across [1.0, 1.25, 5.0] is 4.0 - well past the 0.5 threshold
-    assert body["is_critical"] is True
+    assert body["isCritical"] is True
 
 
 @pytest.mark.asyncio
@@ -220,7 +220,7 @@ async def test_is_critical_true_at_the_tightest_possible_threshold_crossing():
     assert response.status_code == 200
     body = response.json()
     # spread is exactly 0.75 - just above the 0.5 threshold
-    assert body["is_critical"] is True
+    assert body["isCritical"] is True
 
 
 @pytest.mark.asyncio

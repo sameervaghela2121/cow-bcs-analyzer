@@ -28,12 +28,12 @@ function candidateValues(bcsScore) {
   const scores = successfulScores(bcsScore);
   const values = { mean: meanOfScores(scores), median: medianOfScores(scores) };
   for (const p of PROVIDERS) {
-    values[p] = bcsScore?.[p]?.status === 'success' ? bcsScore[p].final_bcs : null;
+    values[p] = bcsScore?.[p]?.status === 'success' ? bcsScore[p].finalBcs : null;
   }
   return values;
 }
 
-// Sets every candidate's is_true flag based on whether its value exactly
+// Sets every candidate's isTrue flag based on whether its value exactly
 // equals `matchValue` (already quarter-rounded on both sides, so exact ===
 // is safe) - so a single pick can mark several candidates true at once
 // purely because they happen to agree. `matchValue: null` (Override) always
@@ -43,11 +43,11 @@ function applySelection(bcsScore, values, matchValue) {
   const next = { ...(bcsScore || {}) };
   for (const p of PROVIDERS) {
     if (next[p]) {
-      next[p] = { ...next[p], is_true: matchValue != null && values[p] === matchValue };
+      next[p] = { ...next[p], isTrue: matchValue != null && values[p] === matchValue };
     }
   }
-  next.is_mean_true = matchValue != null && values.mean === matchValue;
-  next.is_median_true = matchValue != null && values.median === matchValue;
+  next.isMeanAccurate = matchValue != null && values.mean === matchValue;
+  next.isMedianAccurate = matchValue != null && values.median === matchValue;
   return next;
 }
 
@@ -96,8 +96,10 @@ async function serializeBcsAnalysis(doc) {
   const scores = successfulScores(doc.bcsScore);
   return {
     id: doc._id.toString(),
-    cow: doc.cow.toString(),
-    cowsId: doc.cowsId,
+    cow: doc.cow._id.toString(),
+    // cowsId lives only on the Cow document - doc.cow must be populated
+    // (see every fetch site below) rather than denormalized here.
+    cowsId: doc.cow.cowsId,
     cowsImages: doc.cowsImages,
     imageUrls,
     thumbnailUrls,
@@ -105,10 +107,10 @@ async function serializeBcsAnalysis(doc) {
     bcsScore: doc.bcsScore,
     meanScore: meanOfScores(scores),
     medianScore: medianOfScores(scores),
-    final_bcs: doc.final_bcs,
+    finalBcs: doc.finalBcs,
     status: doc.status,
     errorMessage: doc.errorMessage,
-    is_approved: doc.is_approved,
+    isApproved: doc.isApproved,
     createdBy: doc.createdBy.toString(),
     updatedBy: doc.updatedBy.toString(),
     createdAt: doc.createdAt,
@@ -194,7 +196,7 @@ async function getOne(req, res, next) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(404).json({ error: 'BCS analysis record not found.' });
     }
-    const analysis = await BcsAnalysis.findById(id);
+    const analysis = await BcsAnalysis.findById(id).populate('cow');
     if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
     res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
   } catch (err) {
@@ -204,8 +206,8 @@ async function getOne(req, res, next) {
 
 // Reviewer clicks exactly one of the 5 candidates (3 providers + computed
 // mean + computed median). Every candidate whose value exactly matches that
-// pick is marked is_true too - so picking Median, which happens to equal
-// Gemini's own score, marks both true in one click. final_bcs becomes the
+// pick is marked isTrue too - so picking Median, which happens to equal
+// Gemini's own score, marks both true in one click. finalBcs becomes the
 // clicked value directly; no combining math ever runs across differing
 // values (there's nothing to select if they disagree - that's what Override
 // is for). This also covers what used to be a separate Approve action:
@@ -222,7 +224,7 @@ async function selectScore(req, res, next) {
       return res.status(400).json({ error: `source must be one of: ${SELECTABLE_SOURCES.join(', ')}.` });
     }
 
-    const analysis = await BcsAnalysis.findById(id);
+    const analysis = await BcsAnalysis.findById(id).populate('cow');
     if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
     if (analysis.status !== 'completed') {
       return res.status(409).json({ error: 'Only a completed analysis can be reviewed.' });
@@ -238,8 +240,8 @@ async function selectScore(req, res, next) {
 
     analysis.bcsScore = applySelection(analysis.bcsScore, values, clickedValue);
     analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
-    analysis.final_bcs = clickedValue;
-    analysis.is_approved = true;
+    analysis.finalBcs = clickedValue;
+    analysis.isApproved = true;
     analysis.updatedBy = req.user.id;
     await analysis.save();
     const after = snapshotBcsAnalysis(analysis);
@@ -270,7 +272,7 @@ async function override(req, res, next) {
       return res.status(400).json({ error: 'score is required and must be a number between 1 and 5.' });
     }
 
-    const analysis = await BcsAnalysis.findById(id);
+    const analysis = await BcsAnalysis.findById(id).populate('cow');
     if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
     if (analysis.status !== 'completed') {
       return res.status(409).json({ error: 'Only a completed analysis can be overridden.' });
@@ -284,11 +286,11 @@ async function override(req, res, next) {
     // applySelection's comparisons).
     analysis.bcsScore = applySelection(analysis.bcsScore, {}, null);
     analysis.markModified('bcsScore'); // Mixed type - be explicit rather than rely on assignment detection
-    analysis.final_bcs = roundQuarter(score);
+    analysis.finalBcs = roundQuarter(score);
     // Overriding is itself a review decision - a reviewer picking the value
     // by hand is at least as final as accepting a matched candidate, so
     // this counts as reviewed too and drops off the review list the same way.
-    analysis.is_approved = true;
+    analysis.isApproved = true;
     analysis.updatedBy = req.user.id;
     await analysis.save();
     const after = snapshotBcsAnalysis(analysis);

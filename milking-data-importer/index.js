@@ -14,6 +14,9 @@ functions.http('importMilkingData', async (req, res) => {
     res.status(200).json(result);
   } catch (err) {
     console.error(`importMilkingFile failed for ${bucketName}/${objectPath}:`, err);
-    res.status(500).json({ error: err.message });
+    // err.status = 400 marks a bad-file problem (missing/unrecognized data) -
+    // its message is meaningful and safe to relay to the end user as-is.
+    // Anything else is a genuine system fault, still reported as 500.
+    res.status(err.status || 500).json({ error: err.message });
   }
 });

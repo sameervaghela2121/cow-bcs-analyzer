@@ -26,7 +26,7 @@ function renderAudit() {
 }
 
 describe('AuditPage', () => {
-  it('renders an overridden entry, showing the final_bcs before/after change', async () => {
+  it('renders an overridden entry, showing the finalBcs before/after change', async () => {
     server.use(
       http.get('http://localhost:4000/api/audit', () =>
         HttpResponse.json({
@@ -34,8 +34,8 @@ describe('AuditPage', () => {
             id: 'e1',
             cowsId: '4417',
             action: 'overridden',
-            before: { final_bcs: 3.5, is_approved: false },
-            after: { final_bcs: 3.25, is_approved: true },
+            before: { finalBcs: 3.5, isApproved: false },
+            after: { finalBcs: 3.25, isApproved: true },
             performedBy: { id: 'u1', name: 'Jane Reviewer', email: 'jane@example.com' },
             createdAt: '2026-07-10T00:00:00Z',
           }],
@@ -58,8 +58,8 @@ describe('AuditPage', () => {
             id: 'e2',
             cowsId: '5001',
             action: 'provider_selected',
-            before: { final_bcs: null, is_approved: false, bcsScore: { is_median_true: null } },
-            after: { final_bcs: 3.0, is_approved: true, bcsScore: { is_median_true: true, is_mean_true: false } },
+            before: { finalBcs: null, isApproved: false, bcsScore: { isMedianAccurate: null } },
+            after: { finalBcs: 3.0, isApproved: true, bcsScore: { isMedianAccurate: true, isMeanAccurate: false } },
             performedBy: { id: 'u1', name: 'Jane Reviewer', email: 'jane@example.com' },
             createdAt: '2026-07-10T00:00:00Z',
           }],
@@ -81,8 +81,8 @@ describe('AuditPage', () => {
             id: 'e3',
             cowsId: '6002',
             action: 'provider_selected',
-            before: { final_bcs: 3.0, is_approved: false, bcsScore: { is_median_true: true, gemini: { final_bcs: 3.5, status: 'success', is_true: false } } },
-            after: { final_bcs: 3.5, is_approved: true, bcsScore: { is_median_true: false, gemini: { final_bcs: 3.5, status: 'success', is_true: true } } },
+            before: { finalBcs: 3.0, isApproved: false, bcsScore: { isMedianAccurate: true, gemini: { finalBcs: 3.5, status: 'success', isTrue: false } } },
+            after: { finalBcs: 3.5, isApproved: true, bcsScore: { isMedianAccurate: false, gemini: { finalBcs: 3.5, status: 'success', isTrue: true } } },
             performedBy: { id: 'u1', name: 'Jane Reviewer', email: 'jane@example.com' },
             createdAt: '2026-07-10T00:00:00Z',
           }],
@@ -110,8 +110,8 @@ describe('AuditPage', () => {
             id: 'e1',
             cowsId: '4417',
             action: 'provider_selected',
-            before: { final_bcs: null, is_approved: false, bcsScore: { is_median_true: null } },
-            after: { final_bcs: 3.0, is_approved: true, bcsScore: { is_median_true: true } },
+            before: { finalBcs: null, isApproved: false, bcsScore: { isMedianAccurate: null } },
+            after: { finalBcs: 3.0, isApproved: true, bcsScore: { isMedianAccurate: true } },
             performedBy: null,
             createdAt: '2026-07-10T00:00:00Z',
           }],
@@ -133,8 +133,8 @@ describe('AuditPage', () => {
             id: 'e1',
             cowsId: '4417',
             action: 'overridden',
-            before: { final_bcs: 3.5, is_approved: false },
-            after: { final_bcs: 3.25, is_approved: true },
+            before: { finalBcs: 3.5, isApproved: false },
+            after: { finalBcs: 3.25, isApproved: true },
             performedBy: { id: 'u1', name: 'Jane Reviewer', email: 'jane@example.com' },
             createdAt: '2026-07-21T00:00:00Z',
           }],

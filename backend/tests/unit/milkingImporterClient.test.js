@@ -46,10 +46,37 @@ describe('milkingImporterClient', () => {
     expect(result).toEqual({ source: 'DelPro', recordsInserted: 9 });
   });
 
-  it('throws (does not swallow) when the deployed function responds with a non-2xx status', async () => {
+  it('surfaces the Cloud Function\'s own error message and status (does not swallow) on a non-2xx response', async () => {
     config.milking.importerUrl = 'https://bcs-milking-data-importer-xyz.a.run.app';
-    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'This file is missing the Cow Number for row 3. Please fill in the Cow Number for every row and re-upload the file. No records were imported.' }),
+    });
 
-    await expect(triggerMilkingImport({ bucketName: 'b', objectPath: '2026-07-22/scr.xlsx' })).rejects.toThrow(/500/);
+    let caught;
+    try {
+      await triggerMilkingImport({ bucketName: 'b', objectPath: '2026-07-22/scr.xlsx' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught.message).toBe(
+      'This file is missing the Cow Number for row 3. Please fill in the Cow Number for every row and re-upload the file. No records were imported.'
+    );
+    expect(caught.status).toBe(400);
+  });
+
+  it('falls back to a generic message when the response has no parseable JSON body', async () => {
+    config.milking.importerUrl = 'https://bcs-milking-data-importer-xyz.a.run.app';
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500, json: async () => { throw new Error('not json'); } });
+
+    let caught;
+    try {
+      await triggerMilkingImport({ bucketName: 'b', objectPath: '2026-07-22/scr.xlsx' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught.message).toMatch(/500/);
+    expect(caught.status).toBe(500);
   });
 });

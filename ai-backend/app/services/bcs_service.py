@@ -31,10 +31,10 @@ async def _run_single_provider(
         first = parsed
     return ProviderAssessment(
         recommendation=first["recommendation"],
-        final_bcs=first["final_bcs"],
+        finalBcs=first["final_bcs"],
         confidence=first["confidence"],
         status="success",
-        error_message=None,
+        errorMessage=None,
     )
 
 
@@ -73,7 +73,7 @@ async def assess_bcs(
             logger.warning("Provider '%s' failed: %s", name, exc)
             return name, ProviderAssessment(
                 status="error",
-                error_message=str(exc),
+                errorMessage=str(exc),
             )
 
     outcomes = await asyncio.gather(*[_safe_run(name) for name in names])
@@ -87,7 +87,7 @@ async def assess_bcs(
                 success_count += 1
 
     if success_count == 0:
-        errors = [f"{name}: {a.error_message}" for name, a in outcomes]
+        errors = [f"{name}: {a.errorMessage}" for name, a in outcomes]
         raise LLMProviderError(f"All providers failed: {errors}")
 
     # Computed from `outcomes` (only the providers queried this call), not
@@ -95,15 +95,15 @@ async def assess_bcs(
     # still carry ProviderAssessment's default status="success" even though
     # they were never queried, which would otherwise silently pollute this.
     successful_scores = [
-        assessment.final_bcs
+        assessment.finalBcs
         for _, assessment in outcomes
-        if assessment.status == "success" and assessment.final_bcs is not None
+        if assessment.status == "success" and assessment.finalBcs is not None
     ]
     # Mean/median are intentionally not computed here anymore - they're a
     # pure function of these same successful_scores, so the Node backend
     # recomputes them fresh at read time instead of us persisting a value
     # that could drift from the raw scores it's derived from.
     if len(successful_scores) >= 2:
-        response.is_critical = (max(successful_scores) - min(successful_scores)) > 0.5
+        response.isCritical = (max(successful_scores) - min(successful_scores)) > 0.5
 
     return response
