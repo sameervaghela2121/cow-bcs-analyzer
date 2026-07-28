@@ -44,7 +44,13 @@ describe('LoginPage', () => {
       http.post('http://localhost:4000/api/auth/login', () =>
         HttpResponse.json({
           accessToken: 'acc',
-          user: { id: '1', email: 'ok@example.com', name: 'OK', role: 'staff' },
+          user: { id: '1', email: 'ok@example.com', name: 'OK', status: 'active' },
+          membership: {
+            id: 'm1',
+            organization: { id: 'org1', name: 'Good Farm', slug: 'good-farm' },
+            facility: { id: 'fac1', name: 'Modasa', slug: 'modasa' },
+            role: { id: 'r1', name: 'Staff' },
+          },
         })
       )
     );

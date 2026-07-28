@@ -1,10 +1,11 @@
 const Cow = require('./models/Cow');
 
-// Mirrors backend/src/services/cowService.js's find-or-create pattern.
-async function findOrCreateCow(cowsId) {
-  let cow = await Cow.findOne({ cowsId });
+// Mirrors backend/src/services/cowService.js's find-or-create pattern,
+// scoped to the facility the uploading user belongs to.
+async function findOrCreateCow(facilityId, cowsId) {
+  let cow = await Cow.findOne({ facility: facilityId, cowsId });
   if (!cow) {
-    cow = await Cow.create({ cowsId });
+    cow = await Cow.create({ facility: facilityId, cowsId });
   }
   return cow;
 }

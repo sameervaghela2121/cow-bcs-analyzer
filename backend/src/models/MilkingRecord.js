@@ -12,6 +12,11 @@ const milkingRecordSchema = new mongoose.Schema(
     // column - deliberately NOT cowNumber/animalNumber below, which stay
     // plain report fields. See milking-data-importer/src/cowIdColumn.js.
     cow: { type: mongoose.Schema.Types.ObjectId, ref: 'Cow' },
+    // Known at upload time (the uploader's own session is already
+    // facility-scoped), so these are required even though cow above isn't -
+    // a row can be tenant-filtered before its cow ever resolves.
+    organization: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+    facility: { type: mongoose.Schema.Types.ObjectId, ref: 'Facility', required: true, index: true },
 
     // SCR fields
     cowNumber: { type: String },

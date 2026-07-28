@@ -21,8 +21,11 @@ export default function AcceptInvitePage() {
     setError(null);
     setSubmitting(true);
     try {
-      await acceptInvite(email, token, password);
-      navigate('/herd', { replace: true });
+      // Accepting an invite always resolves to exactly the one membership
+      // the invite named, so this is always non-null - but fall back to the
+      // picker defensively rather than assuming, same as LoginPage.
+      const membership = await acceptInvite(email, token, password);
+      navigate(membership ? '/herd' : '/select-workspace', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not activate your account.');
     } finally {

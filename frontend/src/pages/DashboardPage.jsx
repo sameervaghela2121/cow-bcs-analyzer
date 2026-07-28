@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useScopedNavigate } from '../auth/useScopedNavigate.js';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -249,7 +249,7 @@ function VolatilityList({ items, navigate }) {
 }
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
+  const navigate = useScopedNavigate();
   const { cows, allAnalyses, isLoading } = useDashboardData();
 
   const latestByCow = useMemo(() => latestAnalysisPerCow(allAnalyses), [allAnalyses]);

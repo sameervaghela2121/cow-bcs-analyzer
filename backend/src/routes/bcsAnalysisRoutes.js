@@ -1,13 +1,14 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireSession } = require('../middleware/auth');
+const { resolveScope } = require('../middleware/resolveScope');
 const bcsAnalysisController = require('../controllers/bcsAnalysisController');
 
 const router = express.Router();
 
-router.post('/upload-urls', requireAuth(), bcsAnalysisController.generateUploadUrls);
-router.post('/', requireAuth(), bcsAnalysisController.create);
-router.get('/:id', requireAuth(), bcsAnalysisController.getOne);
-router.patch('/:id/select', requireAuth(), bcsAnalysisController.selectScore);
-router.patch('/:id/override', requireAuth(), bcsAnalysisController.override);
+router.post('/upload-urls', requireAuth(), requireSession(), resolveScope(), bcsAnalysisController.generateUploadUrls);
+router.post('/', requireAuth(), requireSession(), resolveScope(), bcsAnalysisController.create);
+router.get('/:id', requireAuth(), requireSession(), resolveScope(), bcsAnalysisController.getOne);
+router.patch('/:id/select', requireAuth(), requireSession(), resolveScope(), bcsAnalysisController.selectScore);
+router.patch('/:id/override', requireAuth(), requireSession(), resolveScope(), bcsAnalysisController.override);
 
 module.exports = router;

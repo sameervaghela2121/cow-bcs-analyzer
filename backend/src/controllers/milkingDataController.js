@@ -23,7 +23,12 @@ async function generateUploadUrl(req, res, next) {
     // Date folder is always server-generated, never client-supplied, same
     // reasoning as batchTimestamp in the BCS photo upload flow.
     const dateFolder = buildDateFolder();
-    const objectPath = buildMilkingObjectPath({ dateFolder, filename });
+    const objectPath = buildMilkingObjectPath({
+      organizationId: req.scope.organizationId,
+      facilityId: req.scope.facilityId,
+      dateFolder,
+      filename,
+    });
     const uploadUrl = await generateMilkingUploadUrl({ objectPath, contentType });
 
     res.json({ dateFolder, filename, gsUri: toMilkingGsUri(objectPath), objectPath, uploadUrl });
@@ -35,14 +40,22 @@ async function generateUploadUrl(req, res, next) {
 async function importUpload(req, res, next) {
   try {
     const { objectPath } = req.body;
-    if (!objectPath || !/^[A-Za-z0-9._-]{1,128}\/[A-Za-z0-9._-]{1,128}$/.test(objectPath)) {
-      return res.status(400).json({ error: 'objectPath is required and must be a <dateFolder>/<filename> path.' });
+    const segment = '[A-Za-z0-9._-]{1,128}';
+    if (!objectPath || !new RegExp(`^${segment}/${segment}/${segment}/${segment}$`).test(objectPath)) {
+      return res.status(400).json({ error: 'objectPath is required and must be a <organizationId>/<facilityId>/<dateFolder>/<filename> path.' });
     }
 
     // bucketName is never taken from the client - there's only one
     // legitimate bucket for this feature, so it's hardcoded server-side
-    // rather than trusted from the request.
-    const result = await triggerMilkingImport({ bucketName: config.milking.bucketName, objectPath });
+    // rather than trusted from the request. organizationId/facilityId come
+    // from the caller's own session, not the request body, so a client
+    // can never claim to be importing data on behalf of a different tenant.
+    const result = await triggerMilkingImport({
+      bucketName: config.milking.bucketName,
+      objectPath,
+      organizationId: req.scope.organizationId,
+      facilityId: req.scope.facilityId,
+    });
     res.json(result);
   } catch (err) {
     next(err);

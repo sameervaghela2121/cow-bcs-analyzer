@@ -14,7 +14,7 @@ function getStorage() {
   return storageClient;
 }
 
-async function importMilkingFile({ bucketName, objectPath }) {
+async function importMilkingFile({ bucketName, objectPath, organizationId, facilityId }) {
   await getConnection();
 
   const bucket = getStorage().bucket(bucketName);
@@ -42,13 +42,15 @@ async function importMilkingFile({ bucketName, objectPath }) {
   for (const row of parsedRows) {
     const cowsId = row._cowId;
     if (!cowCache.has(cowsId)) {
-      cowCache.set(cowsId, await findOrCreateCow(cowsId));
+      cowCache.set(cowsId, await findOrCreateCow(facilityId, cowsId));
     }
     row.cow = cowCache.get(cowsId)._id;
     delete row._cowId;
   }
 
-  await MilkingRecord.insertMany(parsedRows.map((row) => ({ ...row, sourceObjectPath: objectPath })));
+  await MilkingRecord.insertMany(
+    parsedRows.map((row) => ({ ...row, organization: organizationId, facility: facilityId, sourceObjectPath: objectPath }))
+  );
 
   return { source, recordsInserted: parsedRows.length };
 }

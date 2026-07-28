@@ -1,10 +1,11 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireSession } = require('../middleware/auth');
+const { resolveScope } = require('../middleware/resolveScope');
 const auditController = require('../controllers/auditController');
 
 const router = express.Router();
 
-router.get('/', requireAuth(), auditController.list);
-router.get('/:id', requireAuth(), auditController.getOne);
+router.get('/', requireAuth(), requireSession(), resolveScope(), auditController.list);
+router.get('/:id', requireAuth(), requireSession(), resolveScope(), auditController.getOne);
 
 module.exports = router;

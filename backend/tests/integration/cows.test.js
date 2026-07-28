@@ -7,64 +7,85 @@ jest.mock('../../src/services/gcsService', () => {
 });
 
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const { generateReadUrl } = require('../../src/services/gcsService');
 const { createApp } = require('../../src/app');
 const { connect, clearDatabase, closeDatabase } = require('../setup');
-const User = require('../../src/models/User');
+const { createOrgAndFacility, createMember } = require('../helpers');
 const Cow = require('../../src/models/Cow');
 const BcsAnalysis = require('../../src/models/BcsAnalysis');
-const config = require('../../src/config/env');
-
-function tokenFor(user) {
-  return jwt.sign({ sub: user._id.toString(), role: user.role }, config.jwtAccessSecret, { expiresIn: '15m' });
-}
 
 describe('Cow CRUD', () => {
-  let app, token;
+  let app;
   beforeAll(async () => { await connect(); app = createApp(); });
-  beforeEach(async () => {
-    const user = await User.create({ email: 'staff@example.com', name: 'Staff', role: 'staff', status: 'active', passwordHash: 'x' });
-    token = tokenFor(user);
-  });
   afterEach(async () => { await clearDatabase(); });
   afterAll(async () => { await closeDatabase(); });
 
+  let memberCounter = 0;
+  async function memberToken() {
+    memberCounter += 1;
+    const { organization, facility, roles } = await createOrgAndFacility();
+    const { token } = await createMember({
+      email: `staff${memberCounter}@example.com`,
+      name: 'Staff',
+      organization,
+      facility,
+      role: roles.staff,
+    });
+    return { token, facility };
+  }
+
   it('creates a cow, defaulting isActive to true', async () => {
+    const { token, facility } = await memberToken();
     const res = await request(app).post('/api/cows').set('Authorization', `Bearer ${token}`).send({ cowsId: '4417' });
     expect(res.status).toBe(201);
     expect(res.body.cow.cowsId).toBe('4417');
     expect(res.body.cow.isActive).toBe(true);
+    expect(await Cow.countDocuments({ facility: facility._id })).toBe(1);
   });
 
-  it('rejects a duplicate cowsId', async () => {
-    await Cow.create({ cowsId: '4417' });
+  it('rejects a duplicate cowsId within the same facility', async () => {
+    const { token, facility } = await memberToken();
+    await Cow.create({ facility: facility._id, cowsId: '4417' });
     const res = await request(app).post('/api/cows').set('Authorization', `Bearer ${token}`).send({ cowsId: '4417' });
     expect(res.status).toBe(409);
   });
 
+  it('allows the same cowsId across two different facilities', async () => {
+    const { facility: facility1 } = await memberToken();
+    await Cow.create({ facility: facility1._id, cowsId: '4417' });
+    const { token: token2 } = await memberToken();
+    const res = await request(app).post('/api/cows').set('Authorization', `Bearer ${token2}`).send({ cowsId: '4417' });
+    expect(res.status).toBe(201);
+  });
+
   it('gets a cow by cowsId', async () => {
-    await Cow.create({ cowsId: '4417' });
+    const { token, facility } = await memberToken();
+    await Cow.create({ facility: facility._id, cowsId: '4417' });
     const res = await request(app).get('/api/cows/4417').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.cow.cowsId).toBe('4417');
   });
 
   it('returns 404 for an unknown cowsId', async () => {
-    const res = await request(app).get('/api/cows/9999').set('Authorization', `Bearer ${token}`);
+    const { token: t } = await memberToken();
+    const res = await request(app).get('/api/cows/9999').set('Authorization', `Bearer ${t}`);
     expect(res.status).toBe(404);
   });
 });
 
 describe('GET /api/cows (herd list)', () => {
-  let app, token;
+  let app, token, facility, organization, userId;
   beforeAll(async () => { await connect(); app = createApp(); });
   beforeEach(async () => {
-    const user = await User.create({ email: 'herd@example.com', name: 'Herd', role: 'staff', status: 'active', passwordHash: 'x' });
-    token = tokenFor(user);
-    await Cow.create({ cowsId: '1001' });
-    await Cow.create({ cowsId: '1002' });
-    await Cow.create({ cowsId: '1003' });
+    const created = await createOrgAndFacility();
+    organization = created.organization;
+    facility = created.facility;
+    const member = await createMember({ email: 'herd@example.com', name: 'Herd', organization, facility, role: created.roles.staff });
+    token = member.token;
+    userId = member.user._id;
+    await Cow.create({ facility: facility._id, cowsId: '1001' });
+    await Cow.create({ facility: facility._id, cowsId: '1002' });
+    await Cow.create({ facility: facility._id, cowsId: '1003' });
   });
   afterEach(async () => { await clearDatabase(); });
   afterAll(async () => { await closeDatabase(); });
@@ -95,12 +116,13 @@ describe('GET /api/cows (herd list)', () => {
   });
 
   it('signs a thumbnail and original image URL from the latest analysis\'s first photo', async () => {
-    const user = await User.findOne({ email: 'herd@example.com' });
-    const cow = await Cow.findOne({ cowsId: '1002' });
+    const cow = await Cow.findOne({ facility: facility._id, cowsId: '1002' });
     await BcsAnalysis.create({
       cow: cow._id,
+      organization: organization._id,
+      facility: facility._id,
       cowsImages: ['gs://bucket/1002/2026-07-16T00-00-00-000Z/a.jpg', 'gs://bucket/1002/2026-07-16T00-00-00-000Z/b.jpg'],
-      status: 'completed', createdBy: user._id, updatedBy: user._id,
+      status: 'completed', createdBy: userId, updatedBy: userId,
     });
 
     generateReadUrl.mockClear();
@@ -117,16 +139,15 @@ describe('GET /api/cows (herd list)', () => {
   });
 
   it('surfaces the most recent analysis status per cow', async () => {
-    const user = await User.findOne({ email: 'herd@example.com' });
-    const cow = await Cow.findOne({ cowsId: '1002' });
+    const cow = await Cow.findOne({ facility: facility._id, cowsId: '1002' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
-      status: 'processing', createdBy: user._id, updatedBy: user._id,
+      cow: cow._id, organization: organization._id, facility: facility._id, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
+      status: 'processing', createdBy: userId, updatedBy: userId,
     });
     await new Promise((r) => setTimeout(r, 10));
     await BcsAnalysis.create({
-      cow: cow._id, cowsImages: ['gs://bucket/1002/ts2/b.jpg'],
-      status: 'completed', createdBy: user._id, updatedBy: user._id,
+      cow: cow._id, organization: organization._id, facility: facility._id, cowsImages: ['gs://bucket/1002/ts2/b.jpg'],
+      status: 'completed', createdBy: userId, updatedBy: userId,
     });
 
     const res = await request(app).get('/api/cows?search=1002').set('Authorization', `Bearer ${token}`);
@@ -134,11 +155,10 @@ describe('GET /api/cows (herd list)', () => {
   });
 
   it('surfaces whether the most recent analysis has been approved', async () => {
-    const user = await User.findOne({ email: 'herd@example.com' });
-    const cow = await Cow.findOne({ cowsId: '1003' });
+    const cow = await Cow.findOne({ facility: facility._id, cowsId: '1003' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
-      status: 'completed', isApproved: true, createdBy: user._id, updatedBy: user._id,
+      cow: cow._id, organization: organization._id, facility: facility._id, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
+      status: 'completed', isApproved: true, createdBy: userId, updatedBy: userId,
     });
 
     const res = await request(app).get('/api/cows?search=1003').set('Authorization', `Bearer ${token}`);
@@ -146,11 +166,10 @@ describe('GET /api/cows (herd list)', () => {
   });
 
   it('defaults latestAnalysisIsApproved to false for a completed-but-unreviewed analysis', async () => {
-    const user = await User.findOne({ email: 'herd@example.com' });
-    const cow = await Cow.findOne({ cowsId: '1001' });
+    const cow = await Cow.findOne({ facility: facility._id, cowsId: '1001' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsImages: ['gs://bucket/1001/ts/a.jpg'],
-      status: 'completed', createdBy: user._id, updatedBy: user._id,
+      cow: cow._id, organization: organization._id, facility: facility._id, cowsImages: ['gs://bucket/1001/ts/a.jpg'],
+      status: 'completed', createdBy: userId, updatedBy: userId,
     });
 
     const res = await request(app).get('/api/cows?search=1001').set('Authorization', `Bearer ${token}`);
@@ -158,13 +177,12 @@ describe('GET /api/cows (herd list)', () => {
   });
 
   it('surfaces finalBcs as the latest BCS score once reviewed', async () => {
-    const user = await User.findOne({ email: 'herd@example.com' });
-    const cow = await Cow.findOne({ cowsId: '1002' });
+    const cow = await Cow.findOne({ facility: facility._id, cowsId: '1002' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
+      cow: cow._id, organization: organization._id, facility: facility._id, cowsImages: ['gs://bucket/1002/ts/a.jpg'],
       status: 'completed', isApproved: true, finalBcs: 3.25,
       bcsScore: { gemini: { finalBcs: 3.0, status: 'success' } },
-      createdBy: user._id, updatedBy: user._id,
+      createdBy: userId, updatedBy: userId,
     });
 
     const res = await request(app).get('/api/cows?search=1002').set('Authorization', `Bearer ${token}`);
@@ -172,13 +190,13 @@ describe('GET /api/cows (herd list)', () => {
   });
 
   it('falls back to the computed median for the latest BCS score before a review decision', async () => {
-    const user = await User.findOne({ email: 'herd@example.com' });
-    const cow = await Cow.findOne({ cowsId: '1003' });
+    const cow = await Cow.findOne({ facility: facility._id, cowsId: '1003' });
     await BcsAnalysis.create({
-      cow: cow._id, cowsImages: ['gs://bucket/1003/ts/a.jpg'],
+      cow: cow._id, organization: organization._id, facility: facility._id,
+      cowsImages: ['gs://bucket/1003/ts/a.jpg'],
       status: 'completed',
       bcsScore: { gemini: { finalBcs: 3.0, status: 'success' }, claude: { finalBcs: 3.5, status: 'success' } },
-      createdBy: user._id, updatedBy: user._id,
+      createdBy: userId, updatedBy: userId,
     });
 
     const res = await request(app).get('/api/cows?search=1003').set('Authorization', `Bearer ${token}`);
@@ -192,27 +210,32 @@ describe('GET /api/cows (herd list)', () => {
 });
 
 describe('GET /api/cows/:cowsId/analyses', () => {
-  let app, token, cow, user;
+  let app, token, cow;
   beforeAll(async () => { await connect(); app = createApp(); });
   beforeEach(async () => {
-    user = await User.create({ email: 'hist@example.com', name: 'Hist', role: 'staff', status: 'active', passwordHash: 'x' });
-    token = tokenFor(user);
-    cow = await Cow.create({ cowsId: '2002' });
+    const { organization, facility, roles } = await createOrgAndFacility();
+    const created = await createMember({ email: 'hist@example.com', name: 'Hist', organization, facility, role: roles.staff });
+    token = created.token;
+    cow = await Cow.create({ facility: facility._id, cowsId: '2002' });
     await BcsAnalysis.create({
       cow: cow._id,
+      organization: organization._id,
+      facility: facility._id,
       cowsImages: ['gs://bucket/2002/2026-07-01T00-00-00-000Z/a.jpg'],
       status: 'completed',
       bcsScore: { gemini: { finalBcs: 3.0 } },
-      createdBy: user._id,
-      updatedBy: user._id,
+      createdBy: created.user._id,
+      updatedBy: created.user._id,
     });
     await new Promise((r) => setTimeout(r, 10));
     await BcsAnalysis.create({
       cow: cow._id,
+      organization: organization._id,
+      facility: facility._id,
       cowsImages: ['gs://bucket/2002/2026-07-10T00-00-00-000Z/b.jpg'],
       status: 'not_started',
-      createdBy: user._id,
-      updatedBy: user._id,
+      createdBy: created.user._id,
+      updatedBy: created.user._id,
     });
   });
   afterEach(async () => { await clearDatabase(); });

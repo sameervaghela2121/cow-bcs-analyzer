@@ -1,10 +1,12 @@
 const { findOrCreateCow } = require('./cowService');
 const BcsAnalysis = require('../models/BcsAnalysis');
 
-async function createAnalysis({ cowsId, cowsImages, userId }) {
-  const cow = await findOrCreateCow(cowsId);
+async function createAnalysis({ cowsId, cowsImages, userId, organizationId, facilityId }) {
+  const cow = await findOrCreateCow(facilityId, cowsId);
   const analysis = await BcsAnalysis.create({
     cow: cow._id,
+    organization: organizationId,
+    facility: facilityId,
     cowsImages,
     bcsScore: {},
     status: 'not_started',

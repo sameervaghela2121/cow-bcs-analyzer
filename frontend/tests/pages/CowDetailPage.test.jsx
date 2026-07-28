@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import CowDetailPage from '../../src/pages/CowDetailPage.jsx';
+import { AuthProvider } from '../../src/auth/AuthContext.jsx';
 
 const server = setupServer();
 beforeAll(() => server.listen());
@@ -16,9 +17,11 @@ function renderDetail() {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/herd/4417']}>
-        <Routes>
-          <Route path="/herd/:cowsId" element={<CowDetailPage />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/herd/:cowsId" element={<CowDetailPage />} />
+          </Routes>
+        </AuthProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -31,11 +34,13 @@ function renderDetailArrivingFrom(previousPath) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[previousPath, '/herd/4417']} initialIndex={1}>
-        <Routes>
-          <Route path="/review" element={<div>Review page</div>} />
-          <Route path="/herd" element={<div>Herd page</div>} />
-          <Route path="/herd/:cowsId" element={<CowDetailPage />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/review" element={<div>Review page</div>} />
+            <Route path="/herd" element={<div>Herd page</div>} />
+            <Route path="/herd/:cowsId" element={<CowDetailPage />} />
+          </Routes>
+        </AuthProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );

@@ -45,9 +45,9 @@ async function create(req, res, next) {
   try {
     const { cowsId } = req.body;
     if (!cowsId) return res.status(400).json({ error: 'cowsId is required.' });
-    const existing = await Cow.findOne({ cowsId });
+    const existing = await Cow.findOne({ facility: req.scope.facilityId, cowsId });
     if (existing) return res.status(409).json({ error: 'A cow with this ID already exists.' });
-    const cow = await Cow.create({ cowsId });
+    const cow = await Cow.create({ facility: req.scope.facilityId, cowsId });
     res.status(201).json({ cow: await serializeCow(cow) });
   } catch (err) {
     next(err);
@@ -56,7 +56,7 @@ async function create(req, res, next) {
 
 async function getOne(req, res, next) {
   try {
-    const cow = await Cow.findOne({ cowsId: req.params.cowsId });
+    const cow = await Cow.findOne({ facility: req.scope.facilityId, cowsId: req.params.cowsId });
     if (!cow) return res.status(404).json({ error: 'Cow not found.' });
     res.json({ cow: await serializeCow(cow) });
   } catch (err) {
@@ -67,7 +67,7 @@ async function getOne(req, res, next) {
 async function list(req, res, next) {
   try {
     const { search, page = 1, limit = 100 } = req.query;
-    const query = {};
+    const query = { facility: req.scope.facilityId };
     if (search && search.trim()) query.cowsId = { $regex: search.trim(), $options: 'i' };
 
     const [total, cows] = await Promise.all([
@@ -108,7 +108,7 @@ async function list(req, res, next) {
 
 async function analyses(req, res, next) {
   try {
-    const cow = await Cow.findOne({ cowsId: req.params.cowsId });
+    const cow = await Cow.findOne({ facility: req.scope.facilityId, cowsId: req.params.cowsId });
     if (!cow) return res.status(404).json({ error: 'Cow not found.' });
     const { page = 1, limit = 100 } = req.query;
     const total = await BcsAnalysis.countDocuments({ cow: cow._id });

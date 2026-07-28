@@ -43,7 +43,7 @@ function serializeAuditLog(doc, nameById) {
 async function list(req, res, next) {
   try {
     const { cowsId, action, from, to, page = 1, limit = 100 } = req.query;
-    const query = {};
+    const query = { facility: req.scope.facilityId };
     if (action && ['provider_selected', 'overridden'].includes(action)) query.action = action;
     if (from || to) {
       query.createdAt = {};
@@ -74,7 +74,7 @@ async function getOne(req, res, next) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(404).json({ error: 'Audit log entry not found.' });
     }
-    const doc = await AuditLog.findById(id).populate('performedBy', 'name email');
+    const doc = await AuditLog.findOne({ _id: id, facility: req.scope.facilityId }).populate('performedBy', 'name email');
     if (!doc) return res.status(404).json({ error: 'Audit log entry not found.' });
     const nameById = await resolveUpdatedByNames([doc]);
     res.json({ auditLog: serializeAuditLog(doc, nameById) });

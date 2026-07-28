@@ -21,20 +21,35 @@ describe('milkingImporterClient', () => {
     jest.clearAllMocks();
   });
 
-  it('calls importMilkingFile in-process when no MILKING_IMPORTER_URL is configured', async () => {
+  it('calls importMilkingFile in-process when no MILKING_IMPORTER_URL is configured, passing organizationId/facilityId through', async () => {
     config.milking.importerUrl = null;
-    const result = await triggerMilkingImport({ bucketName: 'b', objectPath: '2026-07-22/scr.xlsx' });
+    const result = await triggerMilkingImport({
+      bucketName: 'b',
+      objectPath: 'org1/fac1/2026-07-22/scr.xlsx',
+      organizationId: 'org1',
+      facilityId: 'fac1',
+    });
 
-    expect(mockImportMilkingFile).toHaveBeenCalledWith({ bucketName: 'b', objectPath: '2026-07-22/scr.xlsx' });
+    expect(mockImportMilkingFile).toHaveBeenCalledWith({
+      bucketName: 'b',
+      objectPath: 'org1/fac1/2026-07-22/scr.xlsx',
+      organizationId: 'org1',
+      facilityId: 'fac1',
+    });
     expect(mockGetIdTokenClient).not.toHaveBeenCalled();
     expect(result).toEqual({ source: 'SCR', recordsInserted: 4 });
   });
 
-  it('mints an audienced ID token and POSTs when a URL is configured', async () => {
+  it('mints an audienced ID token and POSTs organizationId/facilityId when a URL is configured', async () => {
     config.milking.importerUrl = 'https://bcs-milking-data-importer-xyz.a.run.app';
     global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ source: 'DelPro', recordsInserted: 9 }) });
 
-    const result = await triggerMilkingImport({ bucketName: 'b', objectPath: '2026-07-22/delpro.xlsx' });
+    const result = await triggerMilkingImport({
+      bucketName: 'b',
+      objectPath: 'org1/fac1/2026-07-22/delpro.xlsx',
+      organizationId: 'org1',
+      facilityId: 'fac1',
+    });
 
     expect(mockImportMilkingFile).not.toHaveBeenCalled();
     expect(mockGetIdTokenClient).toHaveBeenCalledWith('https://bcs-milking-data-importer-xyz.a.run.app');
@@ -42,7 +57,12 @@ describe('milkingImporterClient', () => {
     const [url, options] = global.fetch.mock.calls[0];
     expect(url).toBe('https://bcs-milking-data-importer-xyz.a.run.app');
     expect(options.headers.authorization).toBe('Bearer fake-id-token');
-    expect(JSON.parse(options.body)).toEqual({ bucketName: 'b', objectPath: '2026-07-22/delpro.xlsx' });
+    expect(JSON.parse(options.body)).toEqual({
+      bucketName: 'b',
+      objectPath: 'org1/fac1/2026-07-22/delpro.xlsx',
+      organizationId: 'org1',
+      facilityId: 'fac1',
+    });
     expect(result).toEqual({ source: 'DelPro', recordsInserted: 9 });
   });
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useScopedNavigate } from '../auth/useScopedNavigate.js';
 import { Check, FileSpreadsheet, ImagePlus, UploadCloud, X } from 'lucide-react';
 import { bcsAnalysisApi, putFileToGcs, analyzeBcsRecord } from '../api/bcsAnalysis.js';
 import { milkingDataApi } from '../api/milkingData.js';
@@ -144,7 +144,7 @@ function ModeToggle({ mode, setMode, disabled }) {
 }
 
 function BcsUploadSection() {
-  const navigate = useNavigate();
+  const navigate = useScopedNavigate();
   const fileInputRef = useRef(null);
   const [cowId, setCowId] = useState('');
   const [selectedCow, setSelectedCow] = useState(null);

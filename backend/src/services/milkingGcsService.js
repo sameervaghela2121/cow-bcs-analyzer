@@ -18,10 +18,12 @@ function buildDateFolder(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
-function buildMilkingObjectPath({ dateFolder, filename }) {
+function buildMilkingObjectPath({ organizationId, facilityId, dateFolder, filename }) {
+  assertSafePathSegment(organizationId, 'organizationId');
+  assertSafePathSegment(facilityId, 'facilityId');
   assertSafePathSegment(dateFolder, 'dateFolder');
   assertSafePathSegment(filename, 'filename');
-  return `${dateFolder}/${filename}`;
+  return `${organizationId}/${facilityId}/${dateFolder}/${filename}`;
 }
 
 function toMilkingGsUri(objectPath) {

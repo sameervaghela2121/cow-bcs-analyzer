@@ -52,16 +52,20 @@ function applySelection(bcsScore, values, matchValue) {
 }
 
 // Every cowsImages entry must be a gs:// URI in *our* bucket, under a
-// <cowsId>/<batchTimestamp>/<filename> path that actually matches the cowsId
-// being submitted — otherwise a caller could reference another cow's images,
-// or an entirely different bucket, without ever uploading anything themselves.
-function isOwnedImageUri(uri, cowsId) {
+// <organizationId>/<facilityId>/<cowsId>/<batchTimestamp>/<filename> path
+// that actually matches both the caller's own tenant scope AND the cowsId
+// being submitted — otherwise a caller could reference another cow's (or
+// another tenant's) images, or an entirely different bucket, without ever
+// uploading anything themselves.
+function isOwnedImageUri(uri, { organizationId, facilityId, cowsId }) {
   if (typeof uri !== 'string' || !uri.startsWith(`gs://${config.gcs.bucketName}/`)) return false;
   const { objectPath } = fromGsUri(uri);
   const segments = objectPath.split('/');
-  if (segments.length !== 3) return false;
-  const [imageCowsId, batchTimestamp, filename] = segments;
+  if (segments.length !== 5) return false;
+  const [imageOrgId, imageFacilityId, imageCowsId, batchTimestamp, filename] = segments;
   return (
+    imageOrgId === organizationId &&
+    imageFacilityId === facilityId &&
     imageCowsId === cowsId &&
     SAFE_ID_OR_FILENAME.test(batchTimestamp) &&
     SAFE_ID_OR_FILENAME.test(filename)
@@ -137,12 +141,18 @@ async function generateUploadUrls(req, res, next) {
       return res.status(400).json({ error: `contentType must be one of: ${[...ALLOWED_IMAGE_CONTENT_TYPES].join(', ')}.` });
     }
 
-    await findOrCreateCow(cowsId);
+    await findOrCreateCow(req.scope.facilityId, cowsId);
 
     const batchTimestamp = sanitizeBatchTimestamp();
     const uploads = await Promise.all(
       files.map(async ({ filename, contentType }) => {
-        const objectPath = buildObjectPath({ cowsId, batchTimestamp, filename });
+        const objectPath = buildObjectPath({
+          organizationId: req.scope.organizationId,
+          facilityId: req.scope.facilityId,
+          cowsId,
+          batchTimestamp,
+          filename,
+        });
         const uploadUrl = await generateUploadUrl({ objectPath, contentType });
         return { filename, gsUri: toGsUri(objectPath), uploadUrl };
       })
@@ -163,13 +173,20 @@ async function create(req, res, next) {
     if (!Array.isArray(cowsImages) || cowsImages.length === 0) {
       return res.status(400).json({ error: 'cowsImages must be a non-empty array of gs:// URIs.' });
     }
-    if (cowsImages.some((uri) => !isOwnedImageUri(uri, cowsId))) {
+    const imageContext = { organizationId: req.scope.organizationId, facilityId: req.scope.facilityId, cowsId };
+    if (cowsImages.some((uri) => !isOwnedImageUri(uri, imageContext))) {
       return res.status(400).json({
-        error: `Each entry in cowsImages must be a gs://${config.gcs.bucketName}/${cowsId}/<batchTimestamp>/<filename> URI.`,
+        error: `Each entry in cowsImages must be a gs://${config.gcs.bucketName}/${req.scope.organizationId}/${req.scope.facilityId}/${cowsId}/<batchTimestamp>/<filename> URI.`,
       });
     }
 
-    const analysis = await createAnalysis({ cowsId, cowsImages, userId: req.user.id });
+    const analysis = await createAnalysis({
+      cowsId,
+      cowsImages,
+      userId: req.user.id,
+      organizationId: req.scope.organizationId,
+      facilityId: req.scope.facilityId,
+    });
 
     // Compressed thumbnail/display variants are a display-only optimization -
     // a failure here must never block record creation or AI analysis, which
@@ -196,7 +213,7 @@ async function getOne(req, res, next) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(404).json({ error: 'BCS analysis record not found.' });
     }
-    const analysis = await BcsAnalysis.findById(id).populate('cow');
+    const analysis = await BcsAnalysis.findOne({ _id: id, facility: req.scope.facilityId }).populate('cow');
     if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
     res.json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
   } catch (err) {
@@ -224,7 +241,7 @@ async function selectScore(req, res, next) {
       return res.status(400).json({ error: `source must be one of: ${SELECTABLE_SOURCES.join(', ')}.` });
     }
 
-    const analysis = await BcsAnalysis.findById(id).populate('cow');
+    const analysis = await BcsAnalysis.findOne({ _id: id, facility: req.scope.facilityId }).populate('cow');
     if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
     if (analysis.status !== 'completed') {
       return res.status(409).json({ error: 'Only a completed analysis can be reviewed.' });
@@ -272,7 +289,7 @@ async function override(req, res, next) {
       return res.status(400).json({ error: 'score is required and must be a number between 1 and 5.' });
     }
 
-    const analysis = await BcsAnalysis.findById(id).populate('cow');
+    const analysis = await BcsAnalysis.findOne({ _id: id, facility: req.scope.facilityId }).populate('cow');
     if (!analysis) return res.status(404).json({ error: 'BCS analysis record not found.' });
     if (analysis.status !== 'completed') {
       return res.status(409).json({ error: 'Only a completed analysis can be overridden.' });

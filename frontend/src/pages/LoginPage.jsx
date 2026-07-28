@@ -19,8 +19,8 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
-      navigate('/herd', { replace: true });
+      const membership = await login(email, password);
+      navigate(membership ? '/herd' : '/select-workspace', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please try again.');
     } finally {

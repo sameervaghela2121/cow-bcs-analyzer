@@ -6,4 +6,6 @@ export const authApi = {
     apiClient.post('/auth/accept-invite', { email, token, password }).then((r) => r.data),
   me: () => apiClient.get('/auth/me').then((r) => r.data),
   logout: () => apiClient.post('/auth/logout').then((r) => r.data),
+  listMemberships: () => apiClient.get('/auth/memberships').then((r) => r.data.memberships),
+  selectMembership: (membershipId) => apiClient.post('/auth/select-membership', { membershipId }).then((r) => r.data),
 };

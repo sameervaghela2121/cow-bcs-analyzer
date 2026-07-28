@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { useScopedNavigate } from '../auth/useScopedNavigate.js';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { cowsApi } from '../api/cows.js';
 import { PENDING_STATUSES } from '../domain/analysisStatus.js';
@@ -75,7 +76,7 @@ function SkeletonCowCard() {
 }
 
 export default function HerdPage() {
-  const navigate = useNavigate();
+  const navigate = useScopedNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
 

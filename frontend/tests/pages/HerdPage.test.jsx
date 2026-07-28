@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import HerdPage from '../../src/pages/HerdPage.jsx';
+import { AuthProvider } from '../../src/auth/AuthContext.jsx';
 
 const server = setupServer();
 beforeAll(() => server.listen());
@@ -16,10 +17,12 @@ function renderHerd(initialEntries = ['/herd']) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={initialEntries}>
-        <Routes>
-          <Route path="/herd" element={<HerdPage />} />
-          <Route path="/herd/:cowsId" element={<div>Cow detail page</div>} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/herd" element={<HerdPage />} />
+            <Route path="/herd/:cowsId" element={<div>Cow detail page</div>} />
+          </Routes>
+        </AuthProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
