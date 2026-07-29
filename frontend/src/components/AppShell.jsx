@@ -147,7 +147,7 @@ export default function AppShell() {
             <div style={{ fontSize: 12.5, fontWeight: 600, color: color.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user?.name || user?.email}
             </div>
-            <div style={{ fontSize: 10.5, color: color.textMuted, textTransform: 'capitalize' }}>{isSuperAdmin ? 'Super Admin' : membership?.roleName}</div>
+            <div style={{ fontSize: 10.5, color: color.textMuted, textTransform: 'capitalize' }}>{isSuperAdmin ? 'Super Admin' : membership?.roleName === 'Facility-Admin' ? 'Admin' : membership?.roleName}</div>
           </div>
           <button
             onClick={logout}

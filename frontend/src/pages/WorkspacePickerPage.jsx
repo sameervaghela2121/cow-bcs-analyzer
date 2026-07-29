@@ -85,7 +85,7 @@ export default function WorkspacePickerPage() {
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: color.textPrimary }}>{m.organization.name}</div>
                 <div style={{ fontSize: 12, color: color.textSecondary }}>
-                  {m.facility ? m.facility.name : 'All facilities'} · {m.role.name}
+                  {m.facility ? m.facility.name : 'All facilities'} · {m.role.name === 'Facility-Admin' ? 'Admin' : m.role.name}
                 </div>
               </div>
               {selectingId === m.id && <span style={{ fontSize: 12, color: color.textMuted }}>Loading…</span>}

@@ -9,14 +9,17 @@ on:
   workflow_call: {}
 
 env:
-  REGION: us-central1
-  REGISTRY: us-central1-docker.pkg.dev/sameerv/bcs-tracker
-  FRONTEND_URL: https://bcs-frontend-1081873675658.us-central1.run.app
+  # asia-south1 (Mumbai) - same region as the MongoDB Atlas cluster. Running
+  # from us-central1 put every query on a transpacific round trip, which cost
+  # ~1.1s of server time on a login vs ~0.15s here.
+  REGION: asia-south1
+  REGISTRY: asia-south1-docker.pkg.dev/sameerv/bcs-tracker
+  FRONTEND_URL: https://bcs-frontend-1081873675658.asia-south1.run.app
   # Gen2 Cloud Function URL (stable across redeploys). The backend image
   # only ever ships backend/src/ (see Dockerfile) - it has no local copy of
   # image-compressor/ to fall back to in-process, so this must be set for
   # production; unset only makes sense for local dev.
-  IMAGE_COMPRESSOR_URL: https://bcs-image-compressor-ne7pxyotba-uc.a.run.app
+  IMAGE_COMPRESSOR_URL: https://bcs-image-compressor-ne7pxyotba-el.a.run.app
 
 permissions:
   contents: read

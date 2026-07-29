@@ -6,6 +6,7 @@ import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import UsersPage from '../../src/pages/UsersPage.jsx';
 import { AuthProvider } from '../../src/auth/AuthContext.jsx';
+import { ToastProvider } from '../../src/components/ToastProvider.jsx';
 import { setTokens, clearTokens } from '../../src/api/client.js';
 
 const server = setupServer();
@@ -38,7 +39,9 @@ function renderUsers() {
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <AuthProvider>
-          <UsersPage />
+          <ToastProvider>
+            <UsersPage />
+          </ToastProvider>
         </AuthProvider>
       </MemoryRouter>
     </QueryClientProvider>
@@ -168,7 +171,68 @@ describe('UsersPage', () => {
     // combobox order: the invite form's own role select, then one per row.
     for (const select of roleSelects) {
       const optionLabels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
-      expect(optionLabels).toEqual(['Facility-Admin', 'Staff']);
+      expect(optionLabels).toEqual(['Admin', 'Staff']);
     }
+  });
+
+  it('stages a role change in the dropdown and only calls the API once Save is clicked', async () => {
+    mockMe();
+    let changeRoleCalls = 0;
+    let changedTo;
+    server.use(
+      http.get('http://localhost:4000/api/users', () =>
+        HttpResponse.json({
+          memberships: [
+            { id: 'mem2', user: { name: 'Rohan', email: 'rohan@example.com', status: 'active' }, role: { id: 'role-staff', name: 'Staff' }, facility: 'fac1', status: 'active' },
+          ],
+        })
+      ),
+      http.patch('http://localhost:4000/api/users/mem2/role', async ({ request }) => {
+        changeRoleCalls += 1;
+        changedTo = (await request.json()).roleId;
+        return HttpResponse.json({ membership: { id: 'mem2' } });
+      })
+    );
+    renderUsers();
+    await waitFor(() => expect(screen.getByText('Rohan')).toBeInTheDocument());
+    // The row's <select> renders empty until /api/roles resolves.
+    await waitFor(() => expect(screen.getAllByRole('combobox')[0]).toHaveValue('role-staff'));
+
+    // combobox order: the invite form's own role select, then one per row.
+    const rowSelect = screen.getAllByRole('combobox')[1];
+    await userEvent.selectOptions(rowSelect, 'role-facility-admin');
+
+    // The whole point of the Save button: picking from the dropdown must not
+    // commit anything on its own.
+    expect(changeRoleCalls).toBe(0);
+
+    await userEvent.click(screen.getByRole('button', { name: /save role for rohan/i }));
+    await waitFor(() => expect(changeRoleCalls).toBe(1));
+    expect(changedTo).toBe('role-facility-admin');
+    await waitFor(() => expect(screen.getByText('Role updated.')).toBeInTheDocument());
+  });
+
+  it('hides the Save button again when the dropdown is set back to the current role', async () => {
+    mockMe();
+    server.use(
+      http.get('http://localhost:4000/api/users', () =>
+        HttpResponse.json({
+          memberships: [
+            { id: 'mem2', user: { name: 'Rohan', email: 'rohan@example.com', status: 'active' }, role: { id: 'role-staff', name: 'Staff' }, facility: 'fac1', status: 'active' },
+          ],
+        })
+      )
+    );
+    renderUsers();
+    await waitFor(() => expect(screen.getByText('Rohan')).toBeInTheDocument());
+    // The row's <select> renders empty until /api/roles resolves.
+    await waitFor(() => expect(screen.getAllByRole('combobox')[0]).toHaveValue('role-staff'));
+    const rowSelect = screen.getAllByRole('combobox')[1];
+
+    expect(screen.queryByRole('button', { name: /save role for rohan/i })).not.toBeInTheDocument();
+    await userEvent.selectOptions(rowSelect, 'role-facility-admin');
+    expect(screen.getByRole('button', { name: /save role for rohan/i })).toBeInTheDocument();
+    await userEvent.selectOptions(rowSelect, 'role-staff');
+    expect(screen.queryByRole('button', { name: /save role for rohan/i })).not.toBeInTheDocument();
   });
 });

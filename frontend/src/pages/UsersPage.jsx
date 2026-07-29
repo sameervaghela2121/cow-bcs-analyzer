@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Mail, Trash2, User, UserPlus } from 'lucide-react';
+import { Check, ChevronDown, Mail, Trash2, User, UserPlus } from 'lucide-react';
 import { usersApi } from '../api/users.js';
 import { rolesApi } from '../api/roles.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import Skeleton from '../components/Skeleton.jsx';
+import { useToast } from '../components/ToastProvider.jsx';
 import { Button, PageHeader, StatusChip, TextInput } from '../components/ui/index.js';
 import { color, font, radius, shadow, transition } from '../styles/tokens.js';
 
@@ -54,7 +55,7 @@ function GlobalUsersList({ users, isLoading }) {
                 <StatusChip
                   key={m.id}
                   tone="neutral"
-                  label={`${m.organization.name}${m.facility ? ` · ${m.facility.name}` : ''} · ${m.role.name}`}
+                  label={`${m.organization.name}${m.facility ? ` · ${m.facility.name}` : ''} · ${m.role.name === 'Facility-Admin' ? 'Admin' : m.role.name}`}
                 />
               ))}
             </div>
@@ -81,11 +82,18 @@ export default function UsersPage() {
   const roles = membership?.roleName === 'Facility-Admin'
     ? allRoles.filter((r) => r.name !== 'Org-Admin')
     : allRoles;
+  const { showToast } = useToast();
   const myEmail = (user?.email || '').trim().toLowerCase();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [roleId, setRoleId] = useState('');
   const [error, setError] = useState(null);
+  // Role edits are staged here (membershipId -> roleId) rather than applied
+  // on change - picking from the dropdown used to fire the API immediately,
+  // so a mis-click silently changed someone's role with no way to back out.
+  // Save is what commits; savingId disables that one row while in flight.
+  const [pendingRoles, setPendingRoles] = useState({});
+  const [savingId, setSavingId] = useState(null);
 
   // Default the invite form's role to "Staff" once roles have loaded, since
   // that's the base operational role most invites are for.
@@ -114,18 +122,48 @@ export default function UsersPage() {
       await usersApi.invite({ email, name, roleId, facilityId: facilityIdForRole(roleId) });
       setEmail(''); setName('');
       refetch();
+      showToast('Invite sent.');
     } catch (err) {
       setError(err.response?.data?.error || 'Could not send invite.');
     }
   }
 
-  async function changeRole(membershipId, newRoleId) {
-    await usersApi.changeRole(membershipId, newRoleId);
-    refetch();
+  // Records the pick without touching the API. Selecting the role the
+  // membership already has clears the staged edit, so the Save button goes
+  // away instead of offering to save a no-op.
+  function stageRole(membershipId, currentRoleId, nextRoleId) {
+    setPendingRoles((prev) => {
+      const next = { ...prev };
+      if (nextRoleId === currentRoleId) delete next[membershipId];
+      else next[membershipId] = nextRoleId;
+      return next;
+    });
   }
+
+  async function saveRole(membershipId) {
+    const newRoleId = pendingRoles[membershipId];
+    if (!newRoleId) return;
+    setSavingId(membershipId);
+    try {
+      await usersApi.changeRole(membershipId, newRoleId);
+      stageRole(membershipId, newRoleId, newRoleId); // committed - drop the staged edit
+      refetch();
+      showToast('Role updated.');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not update the role.', { type: 'error' });
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function remove(membershipId) {
-    await usersApi.remove(membershipId);
-    refetch();
+    try {
+      await usersApi.remove(membershipId);
+      refetch();
+      showToast('User removed.');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not remove the user.', { type: 'error' });
+    }
   }
 
   if (isSuperAdmin) {
@@ -167,7 +205,7 @@ export default function UsersPage() {
               value={roleId} onChange={(e) => setRoleId(e.target.value)}
               style={{ ...selectStyle, padding: '11px 34px 11px 14px' }}
             >
-              {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              {roles.map((r) => <option key={r.id} value={r.id}>{r.name === 'Facility-Admin' ? 'Admin' : r.name}</option>)}
             </select>
             <ChevronDown size={15} style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', color: color.textMuted, pointerEvents: 'none' }} />
           </div>
@@ -186,6 +224,10 @@ export default function UsersPage() {
         {isLoading && Array.from({ length: 3 }).map((_, i) => <SkeletonUserRow key={i} />)}
         {!isLoading && memberships.map((m) => {
           const isSelf = !!myEmail && m.user?.email?.trim().toLowerCase() === myEmail;
+          const currentRoleId = m.role?.id || '';
+          const selectedRoleId = pendingRoles[m.id] ?? currentRoleId;
+          const isDirty = selectedRoleId !== currentRoleId;
+          const isSaving = savingId === m.id;
           return (
             <div key={m.id} style={{ ...cardShellStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 140 }}>
@@ -197,8 +239,8 @@ export default function UsersPage() {
               </div>
               <div style={{ position: 'relative' }}>
                 <select
-                  value={m.role?.id || ''} onChange={(e) => changeRole(m.id, e.target.value)}
-                  disabled={isSelf}
+                  value={selectedRoleId} onChange={(e) => stageRole(m.id, currentRoleId, e.target.value)}
+                  disabled={isSelf || isSaving}
                   title={isSelf ? "You can't change your own role" : undefined}
                   style={{
                     ...selectStyle, padding: '8px 30px 8px 12px', fontSize: 13,
@@ -207,10 +249,19 @@ export default function UsersPage() {
                     cursor: isSelf ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  {roles.map((r) => <option key={r.id} value={r.id}>{r.name === 'Facility-Admin' ? 'Admin' : r.name}</option>)}
                 </select>
                 <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: color.textMuted, pointerEvents: 'none' }} />
               </div>
+              {isDirty && (
+                <Button
+                  size="sm" icon={Check} disabled={isSaving}
+                  onClick={() => saveRole(m.id)}
+                  aria-label={`Save role for ${m.user?.name}`}
+                >
+                  {isSaving ? 'Saving…' : 'Save'}
+                </Button>
+              )}
               <button
                 onClick={() => remove(m.id)}
                 disabled={isSelf}

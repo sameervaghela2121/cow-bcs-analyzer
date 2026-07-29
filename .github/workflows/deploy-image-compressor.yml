@@ -9,7 +9,9 @@ on:
   workflow_call: {}
 
 env:
-  REGION: us-central1
+  # asia-south1 (Mumbai) - kept in the same region as the backend that
+  # invokes it; see the comment in deploy-backend.yml.
+  REGION: asia-south1
   PROJECT: sameerv
 
 permissions:

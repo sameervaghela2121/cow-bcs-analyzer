@@ -5,8 +5,10 @@ on:
   workflow_call: {}
 
 env:
-  REGION: us-central1
-  REGISTRY: us-central1-docker.pkg.dev/sameerv/bcs-tracker
+  # asia-south1 (Mumbai) - colocated with the MongoDB Atlas cluster; see the
+  # comment in deploy-backend.yml for why this moved off us-central1.
+  REGION: asia-south1
+  REGISTRY: asia-south1-docker.pkg.dev/sameerv/bcs-tracker
 
 permissions:
   contents: read
