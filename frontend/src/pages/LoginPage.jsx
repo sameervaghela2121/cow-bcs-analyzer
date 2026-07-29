@@ -20,7 +20,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const membership = await login(email, password);
-      navigate(membership ? '/herd' : '/select-workspace', { replace: true });
+      navigate(membership ? '/herd' : '/organizations', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please try again.');
     } finally {

@@ -143,4 +143,32 @@ describe('UsersPage', () => {
     await waitFor(() => expect(requestedUrl).toBeTruthy());
     expect(new URL(requestedUrl).searchParams.get('facilityId')).toBe('fac1');
   });
+
+  it('only offers Facility-Admin and Staff in the role dropdowns for a Facility-Admin caller - never Org-Admin', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/auth/me', () =>
+        HttpResponse.json({
+          id: 'u1', email: 'facadmin@example.com', name: 'Facility-Admin Person', status: 'active',
+          membershipId: 'm1', organizationId: 'org1', facilityId: 'fac1', roleName: 'Facility-Admin',
+        })
+      ),
+      http.get('http://localhost:4000/api/roles', () => HttpResponse.json({ roles: ROLES })),
+      http.get('http://localhost:4000/api/users', () =>
+        HttpResponse.json({
+          memberships: [
+            { id: 'mem1', user: { name: 'Rohan', email: 'rohan@example.com', status: 'active' }, role: { id: 'role-staff', name: 'Staff' }, facility: 'fac1', status: 'active' },
+          ],
+        })
+      )
+    );
+    renderUsers();
+    await waitFor(() => expect(screen.getByText('Rohan')).toBeInTheDocument());
+
+    const roleSelects = screen.getAllByRole('combobox');
+    // combobox order: the invite form's own role select, then one per row.
+    for (const select of roleSelects) {
+      const optionLabels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
+      expect(optionLabels).toEqual(['Facility-Admin', 'Staff']);
+    }
+  });
 });

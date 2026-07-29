@@ -72,7 +72,15 @@ export default function UsersPage() {
   // own facility; Org-Admin/super_admin pass no extra filter.
   const listParams = membership?.roleName === 'Facility-Admin' ? { facilityId: membership.facilityId } : {};
   const { data, isLoading } = useQuery({ queryKey: ['users', listParams], queryFn: () => usersApi.list(listParams) });
-  const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, enabled: !isSuperAdmin });
+  const { data: allRoles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, enabled: !isSuperAdmin });
+  // A Facility-Admin can only grant roles within their own facility - Staff
+  // or another Facility-Admin - never Org-Admin (org-wide scope is the
+  // super_admin/Org-Admin's call, not theirs to hand out). Backend already
+  // rejects this via assertRoleGrantable(); hiding it here just keeps the
+  // dropdown honest about what will actually be accepted.
+  const roles = membership?.roleName === 'Facility-Admin'
+    ? allRoles.filter((r) => r.name !== 'Org-Admin')
+    : allRoles;
   const myEmail = (user?.email || '').trim().toLowerCase();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');

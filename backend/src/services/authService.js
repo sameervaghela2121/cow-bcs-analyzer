@@ -31,13 +31,21 @@ function generateAccessToken(user) {
   return jwt.sign({ sub: user._id.toString() }, config.jwtAccessSecret);
 }
 
+// membership.organization/facility may be a plain ObjectId or a populated
+// document depending on the caller (login()/selectMembership() populate for
+// display, acceptInvite() passes a freshly-created unpopulated Membership) -
+// reading ._id first handles both without the caller having to care.
+function idOf(value) {
+  return (value._id || value).toString();
+}
+
 function generateSessionToken({ user, membership, role }) {
   return jwt.sign(
     {
       sub: user._id.toString(),
       membershipId: membership._id.toString(),
-      organizationId: membership.organization.toString(),
-      facilityId: membership.facility ? membership.facility.toString() : null,
+      organizationId: idOf(membership.organization),
+      facilityId: membership.facility ? idOf(membership.facility) : null,
       roleId: role._id.toString(),
       roleName: role.name,
       permissions: role.permissions,

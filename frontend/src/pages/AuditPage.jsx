@@ -85,7 +85,7 @@ export default function AuditPage() {
               </div>
               {/* Chip + text grouped together (not spread across the row) so the
                   gap between them stays the same whether the summary is short
-                  ("Gemini: 3.25") or long ("Claude + Gemini + Mean: 3.25"). */}
+                  ("Gemini: 3.25") or long ("Claude, Gemini, Mean: 3.25"). */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                 <StatusChip tone={entry.action === 'overridden' ? 'warning' : 'ai'} label={meta.label} />
                 <div style={{ fontSize: 13.5, color: color.textPrimary, fontWeight: 500, whiteSpace: 'nowrap' }}>

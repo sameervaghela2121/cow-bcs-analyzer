@@ -1,6 +1,6 @@
 import base64
 
-from anthropic import AsyncAnthropicBedrock
+from anthropic import AsyncAnthropic
 
 from app.core.config import settings
 from app.core.exceptions import extract_error_message, LLMProviderError
@@ -11,11 +11,7 @@ class ClaudeProvider(LLMProvider):
     name = "claude"
 
     def __init__(self) -> None:
-        self._client = AsyncAnthropicBedrock(
-            aws_access_key=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_key=settings.AWS_SECRET_ACCESS_KEY,
-            aws_region=settings.AWS_REGION,
-        )
+        self._client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         self._model = settings.CLAUDE_VISION_MODEL
 
     async def analyze_images(
