@@ -12,29 +12,33 @@ jest.mock('../../src/services/imageCompressorClient', () => ({
 }));
 
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const { triggerCompression } = require('../../src/services/imageCompressorClient');
 const { createApp } = require('../../src/app');
 const { connect, clearDatabase, closeDatabase } = require('../setup');
-const User = require('../../src/models/User');
+const { createOrgAndFacility, createMember } = require('../helpers');
 const Cow = require('../../src/models/Cow');
 const BcsAnalysis = require('../../src/models/BcsAnalysis');
 const AuditLog = require('../../src/models/AuditLog');
 const config = require('../../src/config/env');
 
-function tokenFor(user) {
-  return jwt.sign({ sub: user._id.toString(), role: user.role }, config.jwtAccessSecret, { expiresIn: '15m' });
-}
-
 describe('bcs-analysis upload + create + poll flow', () => {
-  let app, token, user;
+  let app, token, user, organization, facility, roles;
   beforeAll(async () => { await connect(); app = createApp(); });
   beforeEach(async () => {
-    user = await User.create({ email: 'uploader@example.com', name: 'Uploader', role: 'staff', status: 'active', passwordHash: 'x' });
-    token = tokenFor(user);
+    const created = await createOrgAndFacility();
+    organization = created.organization;
+    facility = created.facility;
+    roles = created.roles;
+    const member = await createMember({ email: 'uploader@example.com', name: 'Uploader', organization, facility, role: roles.staff });
+    token = member.token;
+    user = member.user;
   });
   afterEach(async () => { await clearDatabase(); jest.clearAllMocks(); });
   afterAll(async () => { await closeDatabase(); });
+
+  function imagePath(cowsId, rest) {
+    return `${organization._id}/${facility._id}/${cowsId}/${rest}`;
+  }
 
   it('generates signed upload URLs and find-or-creates the cow', async () => {
     const res = await request(app)
@@ -46,9 +50,9 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(res.body.cowsId).toBe('3124');
     expect(res.body.uploads).toHaveLength(2);
     expect(res.body.uploads[0].uploadUrl).toBe('https://storage.googleapis.com/signed-put-url');
-    expect(res.body.uploads[0].gsUri).toMatch(/^gs:\/\/.+\/3124\/.+\/a\.jpg$/);
+    expect(res.body.uploads[0].gsUri).toMatch(new RegExp(`^gs://.+/${organization._id}/${facility._id}/3124/.+/a\\.jpg$`));
 
-    const cow = await Cow.findOne({ cowsId: '3124' });
+    const cow = await Cow.findOne({ facility: facility._id, cowsId: '3124' });
     expect(cow).toBeTruthy();
   });
 
@@ -62,7 +66,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ cowsId: '3124', files: [{ filename: 'c.jpg', contentType: 'image/jpeg' }] });
 
-    const cows = await Cow.find({ cowsId: '3124' });
+    const cows = await Cow.find({ facility: facility._id, cowsId: '3124' });
     expect(cows).toHaveLength(1);
   });
 
@@ -70,7 +74,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const res = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`] });
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg')}`] });
 
     expect(res.status).toBe(201);
     expect(res.body.bcsAnalysis.status).toBe('not_started');
@@ -83,6 +87,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const stored = await BcsAnalysis.findById(res.body.bcsAnalysis.id);
     expect(stored).toBeTruthy();
     expect(stored.cow).toBeTruthy();
+    expect(stored.organization.toString()).toBe(organization._id.toString());
+    expect(stored.facility.toString()).toBe(facility._id.toString());
     expect(stored.isApproved).toBe(false);
   });
 
@@ -90,7 +96,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const res = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`] });
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg')}`] });
 
     expect(res.status).toBe(201);
     expect(res.body.bcsAnalysis.imageUrls).toEqual(['https://storage.googleapis.com/signed-get-url']);
@@ -99,7 +105,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
   });
 
   it('triggers image compression once per uploaded image after creating the record', async () => {
-    const objectPath = '3124/2026-07-16T00-00-00-000Z/a.jpg';
+    const objectPath = imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg');
     await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
@@ -115,7 +121,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const res = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`] });
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg')}`] });
 
     expect(res.status).toBe(201);
     expect(res.body.bcsAnalysis.status).toBe('not_started');
@@ -133,7 +139,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const res = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/../3124/ts/a.jpg`] });
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/../${imagePath('3124', 'ts/a.jpg')}`] });
     expect(res.status).toBe(400);
   });
 
@@ -141,7 +147,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const res = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: ['gs://some-other-bucket/3124/ts/a.jpg'] });
+      .send({ cowsId: '3124', cowsImages: [`gs://some-other-bucket/${imagePath('3124', 'ts/a.jpg')}`] });
     expect(res.status).toBe(400);
   });
 
@@ -149,7 +155,16 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const res = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/9999/ts/a.jpg`] });
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('9999', 'ts/a.jpg')}`] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects creation with an image belonging to a different facility', async () => {
+    const other = await createOrgAndFacility();
+    const res = await request(app)
+      .post('/api/bcs-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/${other.organization._id}/${other.facility._id}/3124/ts/a.jpg`] });
     expect(res.status).toBe(400);
   });
 
@@ -181,7 +196,7 @@ describe('bcs-analysis upload + create + poll flow', () => {
     const createRes = await request(app)
       .post('/api/bcs-analysis')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`] });
+      .send({ cowsId: '3124', cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg')}`] });
 
     const res = await request(app)
       .get(`/api/bcs-analysis/${createRes.body.bcsAnalysis.id}`)
@@ -197,6 +212,25 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(res.status).toBe(404);
   });
 
+  it('returns 404 for a record belonging to a different facility', async () => {
+    const other = await createOrgAndFacility();
+    const otherCow = await Cow.create({ facility: other.facility._id, cowsId: '5555' });
+    const otherAnalysis = await BcsAnalysis.create({
+      cow: otherCow._id,
+      organization: other.organization._id,
+      facility: other.facility._id,
+      cowsImages: [`gs://${config.gcs.bucketName}/x/y/5555/ts/a.jpg`],
+      status: 'not_started',
+      createdBy: user._id,
+      updatedBy: user._id,
+    });
+
+    const res = await request(app)
+      .get(`/api/bcs-analysis/${otherAnalysis._id}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
   describe('PATCH /api/bcs-analysis/:id/select', () => {
     // claude=3.0, gemini=3.5, openai=3.0 -> mean=3.25, median=3.0 (the
     // middle of [3.0, 3.0, 3.5]). claude/openai/median all share the value
@@ -205,10 +239,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
     // unique among the 5 candidates, for the single-match case.
     function makeCompletedAnalysis(overrides = {}) {
       return async () => {
-        const cow = await Cow.create({ cowsId: '3124' });
+        const cow = await Cow.create({ facility: facility._id, cowsId: '3124' });
         return BcsAnalysis.create({
           cow: cow._id,
-          cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+          organization: organization._id,
+          facility: facility._id,
+          cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg')}`],
           status: 'completed',
           bcsScore: {
             claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
@@ -333,10 +369,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
     });
 
     it('rejects selecting on an analysis that has not completed yet', async () => {
-      const cow = await Cow.create({ cowsId: '3124' });
+      const cow = await Cow.create({ facility: facility._id, cowsId: '3124' });
       const analysis = await BcsAnalysis.create({
         cow: cow._id,
-        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        organization: organization._id,
+        facility: facility._id,
+        cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg')}`],
         status: 'processing',
         createdBy: user._id,
         updatedBy: user._id,
@@ -362,16 +400,16 @@ describe('bcs-analysis upload + create + poll flow', () => {
       const analysis = await makeCompletedAnalysis()();
       const originalUpdatedAt = analysis.updatedAt;
 
-      const reviewer = await User.create({ email: 'reviewer@example.com', name: 'Reviewer', role: 'staff', status: 'active', passwordHash: 'x' });
+      const reviewer = await createMember({ email: 'reviewer@example.com', name: 'Reviewer', organization, facility, role: roles.staff });
       await new Promise((r) => setTimeout(r, 10));
 
       const res = await request(app)
         .patch(`/api/bcs-analysis/${analysis._id}/select`)
-        .set('Authorization', `Bearer ${tokenFor(reviewer)}`)
+        .set('Authorization', `Bearer ${reviewer.token}`)
         .send({ source: 'gemini' });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.updatedBy).toBe(reviewer._id.toString());
+      expect(res.body.bcsAnalysis.updatedBy).toBe(reviewer.user._id.toString());
       expect(new Date(res.body.bcsAnalysis.updatedAt).getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
     });
 
@@ -387,6 +425,8 @@ describe('bcs-analysis upload + create + poll flow', () => {
       expect(entries).toHaveLength(1);
       expect(entries[0].action).toBe('provider_selected');
       expect(entries[0].performedBy.toString()).toBe(user._id.toString());
+      expect(entries[0].organization.toString()).toBe(organization._id.toString());
+      expect(entries[0].facility.toString()).toBe(facility._id.toString());
       expect(entries[0].before.finalBcs).toBe(null);
       expect(entries[0].after.finalBcs).toBe(3.0);
       expect(entries[0].before.isApproved).toBe(false);
@@ -414,10 +454,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
   describe('PATCH /api/bcs-analysis/:id/override', () => {
     function makeCompletedAnalysis(overrides = {}) {
       return async () => {
-        const cow = await Cow.create({ cowsId: '3124' });
+        const cow = await Cow.create({ facility: facility._id, cowsId: '3124' });
         return BcsAnalysis.create({
           cow: cow._id,
-          cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+          organization: organization._id,
+          facility: facility._id,
+          cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg')}`],
           status: 'completed',
           bcsScore: {
             claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
@@ -480,10 +522,12 @@ describe('bcs-analysis upload + create + poll flow', () => {
     });
 
     it('rejects overriding an analysis that has not completed yet', async () => {
-      const cow = await Cow.create({ cowsId: '3124' });
+      const cow = await Cow.create({ facility: facility._id, cowsId: '3124' });
       const analysis = await BcsAnalysis.create({
         cow: cow._id,
-        cowsImages: [`gs://${config.gcs.bucketName}/3124/2026-07-16T00-00-00-000Z/a.jpg`],
+        organization: organization._id,
+        facility: facility._id,
+        cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('3124', '2026-07-16T00-00-00-000Z/a.jpg')}`],
         status: 'processing',
         createdBy: user._id,
         updatedBy: user._id,
@@ -509,16 +553,16 @@ describe('bcs-analysis upload + create + poll flow', () => {
       const analysis = await makeCompletedAnalysis()();
       const originalUpdatedAt = analysis.updatedAt;
 
-      const reviewer = await User.create({ email: 'reviewer2@example.com', name: 'Reviewer', role: 'staff', status: 'active', passwordHash: 'x' });
+      const reviewer = await createMember({ email: 'reviewer2@example.com', name: 'Reviewer', organization, facility, role: roles.staff });
       await new Promise((r) => setTimeout(r, 10));
 
       const res = await request(app)
         .patch(`/api/bcs-analysis/${analysis._id}/override`)
-        .set('Authorization', `Bearer ${tokenFor(reviewer)}`)
+        .set('Authorization', `Bearer ${reviewer.token}`)
         .send({ score: 3.5 });
 
       expect(res.status).toBe(200);
-      expect(res.body.bcsAnalysis.updatedBy).toBe(reviewer._id.toString());
+      expect(res.body.bcsAnalysis.updatedBy).toBe(reviewer.user._id.toString());
       expect(new Date(res.body.bcsAnalysis.updatedAt).getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
     });
 

@@ -4,6 +4,8 @@ const auditLogSchema = new mongoose.Schema(
   {
     bcsAnalysis: { type: mongoose.Schema.Types.ObjectId, ref: 'BcsAnalysis', required: true, index: true },
     cow: { type: mongoose.Schema.Types.ObjectId, ref: 'Cow', required: true, index: true },
+    organization: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+    facility: { type: mongoose.Schema.Types.ObjectId, ref: 'Facility', required: true, index: true },
     cowsId: { type: String, required: true, trim: true, index: true },
     // 'approved' (plain accept-the-median-as-is) no longer exists as its own
     // action - selecting the Median candidate (which auto-matches any

@@ -1,19 +1,50 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BarChart3, ClipboardCheck, History, LayoutGrid, LogOut, Search, Upload, Users } from 'lucide-react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { BarChart3, Building2, ClipboardCheck, History, LayoutGrid, LogOut, MapPin, Search, Upload, Users } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { useScopedNavigate } from '../auth/useScopedNavigate.js';
 import { THEME } from '../domain/bcs.js';
 import { cowsApi } from '../api/cows.js';
 import { color, font, radius, shadow, transition } from '../styles/tokens.js';
 import './AppShell.css';
 
-const NAV_ITEMS = [
+const APP_CONTENT_NAV_ITEMS = [
   { to: '/upload', label: 'Upload', icon: Upload },
   { to: '/herd', label: 'Herd', icon: LayoutGrid },
   { to: '/review', label: 'Review', icon: ClipboardCheck },
   { to: '/audit', label: 'Audit Log', icon: History },
   { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
 ];
+
+// What shows in the sidebar is a function of role *and* whether a facility
+// is currently picked, not a fixed list:
+// - super_admin always sees Users (every platform user) and Organizations
+//   (drill-down into Facilities). The regular Upload/Herd/Review/Audit/
+//   Dashboard links only mean something once a facility has actually been
+//   picked via that drill-down, so they're added on top the moment
+//   viewScope.facilityId is set - at that point a super_admin sees exactly
+//   the same facility content a Staff member would, plus the way back up
+//   to Users/Organizations.
+// - Org-Admin sees the regular app content plus a Facilities link (to
+//   switch which of their organization's facilities they're viewing) and
+//   Users (their whole organization's team).
+// - Facility-Admin sees the regular app content (their one facility is
+//   fixed, no switcher needed) plus Users (scoped to that facility).
+// - Staff sees just the regular app content.
+function navItemsFor({ isSuperAdmin, roleName, facilityId }) {
+  if (isSuperAdmin) {
+    const items = [
+      { to: '/users', label: 'Users', icon: Users },
+      { to: '/organizations', label: 'Organizations', icon: Building2 },
+    ];
+    if (facilityId) items.push(...APP_CONTENT_NAV_ITEMS);
+    return items;
+  }
+  const items = [...APP_CONTENT_NAV_ITEMS];
+  if (roleName === 'Org-Admin') items.unshift({ to: '/facilities', label: 'Facilities', icon: MapPin });
+  if (roleName === 'Org-Admin' || roleName === 'Facility-Admin') items.push({ to: '/users', label: 'Users', icon: Users });
+  return items;
+}
 
 function navItemStyle(isActive) {
   return {
@@ -37,7 +68,7 @@ function navItemStyle(isActive) {
 // herd grid first. Debounced the same way HerdPage/UploadPage's own
 // cow-ID search is.
 function GlobalCowSearch() {
-  const navigate = useNavigate();
+  const navigate = useScopedNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -70,8 +101,8 @@ function GlobalCowSearch() {
 }
 
 export default function AppShell() {
-  const { user, logout } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { user, membership, isSuperAdmin, viewScope, logout } = useAuth();
+  const navItems = navItemsFor({ isSuperAdmin, roleName: membership?.roleName, facilityId: viewScope.facilityId });
   const rootStyle = { ...THEME, display: 'flex', height: '100%', width: '100%', background: color.bgPage, color: color.textPrimary, fontFamily: font.family };
 
   return (
@@ -89,17 +120,12 @@ export default function AppShell() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} className="bcs-nav" style={({ isActive }) => navItemStyle(isActive)}>
+          {navItems.map(({ to, label, icon: Icon }) => (
+            <NavLink key={to} to={to} state={viewScope} className="bcs-nav" style={({ isActive }) => navItemStyle(isActive)}>
               <Icon size={16} strokeWidth={1.75} />
               {label}
             </NavLink>
           ))}
-          {isAdmin && (
-            <NavLink to="/users" className="bcs-nav" style={({ isActive }) => navItemStyle(isActive)}>
-              <Users size={16} strokeWidth={1.75} /> User
-            </NavLink>
-          )}
         </div>
 
         <div
@@ -121,7 +147,7 @@ export default function AppShell() {
             <div style={{ fontSize: 12.5, fontWeight: 600, color: color.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user?.name || user?.email}
             </div>
-            <div style={{ fontSize: 10.5, color: color.textMuted, textTransform: 'capitalize' }}>{user?.role}</div>
+            <div style={{ fontSize: 10.5, color: color.textMuted, textTransform: 'capitalize' }}>{isSuperAdmin ? 'Super Admin' : membership?.roleName}</div>
           </div>
           <button
             onClick={logout}

@@ -26,11 +26,15 @@ function snapshotBcsAnalysis(doc) {
 // analysis.cow must be populated by the caller - cowsId is denormalized
 // onto AuditLog (unlike BcsAnalysis) since audit entries are a historical
 // record that should keep reading the cow's id as it was at the time,
-// independent of BcsAnalysis's own schema.
+// independent of BcsAnalysis's own schema. organization/facility come
+// straight off the analysis itself (already denormalized there too), not
+// re-derived.
 async function recordAuditEntry({ analysis, action, before, after, performedBy }) {
   return AuditLog.create({
     bcsAnalysis: analysis._id,
     cow: analysis.cow._id,
+    organization: analysis.organization,
+    facility: analysis.facility,
     cowsId: analysis.cow.cowsId,
     action,
     before,

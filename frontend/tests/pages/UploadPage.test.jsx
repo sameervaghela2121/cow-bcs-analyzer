@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import UploadPage from '../../src/pages/UploadPage.jsx';
+import { AuthProvider } from '../../src/auth/AuthContext.jsx';
 
 // Default handler for the cow-ID search-as-you-type lookup so tests that
 // don't care about it (most of them) don't trip the strict
@@ -21,10 +22,12 @@ function renderUpload() {
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/upload']}>
-        <Routes>
-          <Route path="/upload" element={<UploadPage />} />
-          <Route path="/herd" element={<div>Herd page</div>} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/upload" element={<UploadPage />} />
+            <Route path="/herd" element={<div>Herd page</div>} />
+          </Routes>
+        </AuthProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );

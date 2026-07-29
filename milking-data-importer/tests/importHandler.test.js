@@ -13,6 +13,8 @@ jest.mock('@google-cloud/storage', () => ({
 }));
 
 let mongod;
+const FAKE_ORG_ID = '507f1f77bcf86cd799439011';
+const FAKE_FACILITY_ID = '507f1f77bcf86cd799439012';
 
 // getConnection() only connects once (module-level cache), so point
 // MONGODB_URL at the in-memory server before importHandler is first required.
@@ -54,7 +56,7 @@ describe('importMilkingFile', () => {
     // the first operation in the whole suite to run before that.
     await getConnection();
     // Cow C2 already exists from a prior import - must be reused, not recreated.
-    const existingCow = await Cow.create({ cowsId: 'C2' });
+    const existingCow = await Cow.create({ facility: FAKE_FACILITY_ID, cowsId: 'C2' });
 
     // 'Cow Id' is deliberately different from 'Cow Number' to prove the
     // import links cows by Cow Id, not by the sheet's own Cow Number.
@@ -69,7 +71,7 @@ describe('importMilkingFile', () => {
     ];
     savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
 
-    const result = await importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/scr.xlsx' });
+    const result = await importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/scr.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID });
 
     expect(result).toEqual({ source: 'SCR', recordsInserted: 5 });
     expect(mockBucket).toHaveBeenCalledWith('test-bucket');
@@ -79,6 +81,8 @@ describe('importMilkingFile', () => {
     expect(record.source).toBe('SCR');
     expect(record.shiftYield1).toBe(8.2);
     expect(record.sourceObjectPath).toBe('2026-07-22/scr.xlsx');
+    expect(record.organization.toString()).toBe(FAKE_ORG_ID);
+    expect(record.facility.toString()).toBe(FAKE_FACILITY_ID);
     expect(record.toObject()._cowId).toBeUndefined(); // transient field, never persisted
     // Cow C2 pre-existed - reused, not duplicated.
     expect(record.cow.toString()).toBe(existingCow._id.toString());
@@ -111,7 +115,7 @@ describe('importMilkingFile', () => {
     ];
     savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
 
-    const result = await importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx' });
+    const result = await importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID });
 
     expect(result).toEqual({ source: 'DelPro', recordsInserted: 9 });
     expect(await MilkingRecord.countDocuments()).toBe(9);
@@ -144,7 +148,7 @@ describe('importMilkingFile', () => {
     savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
 
     await expect(
-      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/scr.xlsx' })
+      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/scr.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID })
     ).rejects.toThrow(/missing the Cow Id for row 3\./);
 
     expect(await MilkingRecord.countDocuments()).toBe(0);
@@ -162,7 +166,7 @@ describe('importMilkingFile', () => {
     savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
 
     await expect(
-      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx' })
+      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID })
     ).rejects.toThrow(/no "Cow Id" column/);
 
     expect(await MilkingRecord.countDocuments()).toBe(0);
@@ -187,7 +191,7 @@ describe('importMilkingFile', () => {
     savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
 
     await expect(
-      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx' })
+      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID })
     ).rejects.toThrow(/missing the Cow Id for rows 2, 3, 4, 5\./);
 
     expect(await MilkingRecord.countDocuments()).toBe(0);

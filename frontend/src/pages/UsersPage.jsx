@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Mail, Trash2, User, UserPlus } from 'lucide-react';
 import { usersApi } from '../api/users.js';
-import { getStoredUserEmail } from '../api/client.js';
+import { rolesApi } from '../api/roles.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 import Skeleton from '../components/Skeleton.jsx';
 import { Button, PageHeader, StatusChip, TextInput } from '../components/ui/index.js';
 import { color, font, radius, shadow, transition } from '../styles/tokens.js';
@@ -34,42 +35,104 @@ function SkeletonUserRow() {
   );
 }
 
+// super_admin's view: read-only, every platform user with every
+// organization/facility/role they hold - there's no single organization to
+// scope an invite form to, so inviting from here isn't offered (use a
+// specific organization's own Users tab instead, once you're a member of it).
+function GlobalUsersList({ users, isLoading }) {
+  return (
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 28px 60px' }}>
+      <PageHeader title="Users" subtitle="Every user on the platform, across every organization." />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {isLoading && Array.from({ length: 3 }).map((_, i) => <SkeletonUserRow key={i} />)}
+        {!isLoading && users.map((u) => (
+          <div key={u.id} style={{ ...cardShellStyle, padding: '14px 18px' }}>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: color.textPrimary }}>{u.name}</div>
+            <div style={{ fontSize: 12.5, color: color.textSecondary, marginTop: 2, marginBottom: u.memberships.length ? 10 : 0 }}>{u.email}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {u.memberships.map((m) => (
+                <StatusChip
+                  key={m.id}
+                  tone="neutral"
+                  label={`${m.organization.name}${m.facility ? ` · ${m.facility.name}` : ''} · ${m.role.name}`}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function UsersPage() {
   const queryClient = useQueryClient();
-  const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
-  // The signed-in user's own email, stashed in localStorage at login - used
-  // to stop someone from demoting or deleting their own account, which would
-  // otherwise strand them (or an admin locking themselves out entirely).
-  const myEmail = (getStoredUserEmail() || '').trim().toLowerCase();
+  const { user, membership, isSuperAdmin } = useAuth();
+  // Facility-Admin narrows the org-wide membership list down to just their
+  // own facility; Org-Admin/super_admin pass no extra filter.
+  const listParams = membership?.roleName === 'Facility-Admin' ? { facilityId: membership.facilityId } : {};
+  const { data, isLoading } = useQuery({ queryKey: ['users', listParams], queryFn: () => usersApi.list(listParams) });
+  const { data: allRoles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, enabled: !isSuperAdmin });
+  // A Facility-Admin can only grant roles within their own facility - Staff
+  // or another Facility-Admin - never Org-Admin (org-wide scope is the
+  // super_admin/Org-Admin's call, not theirs to hand out). Backend already
+  // rejects this via assertRoleGrantable(); hiding it here just keeps the
+  // dropdown honest about what will actually be accepted.
+  const roles = membership?.roleName === 'Facility-Admin'
+    ? allRoles.filter((r) => r.name !== 'Org-Admin')
+    : allRoles;
+  const myEmail = (user?.email || '').trim().toLowerCase();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState('staff');
+  const [roleId, setRoleId] = useState('');
   const [error, setError] = useState(null);
+
+  // Default the invite form's role to "Staff" once roles have loaded, since
+  // that's the base operational role most invites are for.
+  useEffect(() => {
+    if (!roleId && roles.length > 0) {
+      setRoleId((roles.find((r) => r.name === 'Staff') || roles[0]).id);
+    }
+  }, [roles, roleId]);
 
   function refetch() {
     queryClient.invalidateQueries({ queryKey: ['users'] });
+  }
+
+  function facilityIdForRole(id) {
+    const role = roles.find((r) => r.id === id);
+    // "Org-Admin" is org-wide (no facility); every other role is scoped to
+    // the inviting admin's own facility - there's no facility-picker UI yet,
+    // so a facility_admin/staff invite always lands in the inviter's own facility.
+    return role?.name === 'Org-Admin' ? null : membership?.facilityId;
   }
 
   async function sendInvite(e) {
     e.preventDefault();
     setError(null);
     try {
-      await usersApi.invite({ email, name, role });
-      setEmail(''); setName(''); setRole('staff');
+      await usersApi.invite({ email, name, roleId, facilityId: facilityIdForRole(roleId) });
+      setEmail(''); setName('');
       refetch();
     } catch (err) {
       setError(err.response?.data?.error || 'Could not send invite.');
     }
   }
 
-  async function changeRole(id, newRole) {
-    await usersApi.changeRole(id, newRole);
+  async function changeRole(membershipId, newRoleId) {
+    await usersApi.changeRole(membershipId, newRoleId);
     refetch();
   }
-  async function remove(id) {
-    await usersApi.remove(id);
+  async function remove(membershipId) {
+    await usersApi.remove(membershipId);
     refetch();
   }
+
+  if (isSuperAdmin) {
+    return <GlobalUsersList users={data?.users || []} isLoading={isLoading} />;
+  }
+
+  const memberships = data?.memberships || [];
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 28px 60px' }}>
@@ -101,11 +164,10 @@ export default function UsersPage() {
           </div>
           <div style={{ position: 'relative' }}>
             <select
-              value={role} onChange={(e) => setRole(e.target.value)}
+              value={roleId} onChange={(e) => setRoleId(e.target.value)}
               style={{ ...selectStyle, padding: '11px 34px 11px 14px' }}
             >
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
+              {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
             <ChevronDown size={15} style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', color: color.textMuted, pointerEvents: 'none' }} />
           </div>
@@ -122,20 +184,20 @@ export default function UsersPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {isLoading && Array.from({ length: 3 }).map((_, i) => <SkeletonUserRow key={i} />)}
-        {!isLoading && users.map((u) => {
-          const isSelf = !!myEmail && u.email?.trim().toLowerCase() === myEmail;
+        {!isLoading && memberships.map((m) => {
+          const isSelf = !!myEmail && m.user?.email?.trim().toLowerCase() === myEmail;
           return (
-            <div key={u.id} style={{ ...cardShellStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', flexWrap: 'wrap' }}>
+            <div key={m.id} style={{ ...cardShellStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 140 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 600, color: color.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {u.name}
+                  {m.user?.name}
                   {isSelf && <StatusChip tone="neutral" label="You" />}
                 </div>
-                <div style={{ fontSize: 12.5, color: color.textSecondary, marginTop: 2 }}>{u.email}</div>
+                <div style={{ fontSize: 12.5, color: color.textSecondary, marginTop: 2 }}>{m.user?.email}</div>
               </div>
               <div style={{ position: 'relative' }}>
                 <select
-                  value={u.role} onChange={(e) => changeRole(u.id, e.target.value)}
+                  value={m.role?.id || ''} onChange={(e) => changeRole(m.id, e.target.value)}
                   disabled={isSelf}
                   title={isSelf ? "You can't change your own role" : undefined}
                   style={{
@@ -145,15 +207,14 @@ export default function UsersPage() {
                     cursor: isSelf ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  <option value="staff">Staff</option>
-                  <option value="admin">Admin</option>
+                  {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
                 <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: color.textMuted, pointerEvents: 'none' }} />
               </div>
               <button
-                onClick={() => remove(u.id)}
+                onClick={() => remove(m.id)}
                 disabled={isSelf}
-                aria-label={`Remove ${u.name}`}
+                aria-label={`Remove ${m.user?.name}`}
                 title={isSelf ? "You can't remove your own account" : 'Remove'}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36,

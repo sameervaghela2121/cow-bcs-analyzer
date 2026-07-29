@@ -6,6 +6,7 @@ import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import ReviewPage from '../../src/pages/ReviewPage.jsx';
 import { ToastProvider } from '../../src/components/ToastProvider.jsx';
+import { AuthProvider } from '../../src/auth/AuthContext.jsx';
 
 const server = setupServer();
 beforeAll(() => server.listen());
@@ -18,10 +19,12 @@ function renderReview() {
     <QueryClientProvider client={client}>
       <ToastProvider>
         <MemoryRouter initialEntries={['/review']}>
-          <Routes>
-            <Route path="/review" element={<ReviewPage />} />
-            <Route path="/herd/:cowsId" element={<div>Cow detail page</div>} />
-          </Routes>
+          <AuthProvider>
+            <Routes>
+              <Route path="/review" element={<ReviewPage />} />
+              <Route path="/herd/:cowsId" element={<div>Cow detail page</div>} />
+            </Routes>
+          </AuthProvider>
         </MemoryRouter>
       </ToastProvider>
     </QueryClientProvider>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useScopedNavigate } from '../auth/useScopedNavigate.js';
 import { Check, ClipboardCheck } from 'lucide-react';
 import { cowsApi } from '../api/cows.js';
 import { bcsAnalysisApi } from '../api/bcsAnalysis.js';
@@ -79,7 +79,7 @@ function CandidateChip({ label, value, checked, disabled, onClick, style }) {
 // both persist and drop this row off the review list once the cows list
 // reflects it.
 function ReviewRow({ cow }) {
-  const navigate = useNavigate();
+  const navigate = useScopedNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { data } = useQuery({

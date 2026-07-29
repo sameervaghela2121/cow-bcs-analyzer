@@ -27,11 +27,13 @@ function assertSafePathSegment(value, label) {
   }
 }
 
-function buildObjectPath({ cowsId, batchTimestamp, filename }) {
+function buildObjectPath({ organizationId, facilityId, cowsId, batchTimestamp, filename }) {
+  assertSafePathSegment(organizationId, 'organizationId');
+  assertSafePathSegment(facilityId, 'facilityId');
   assertSafePathSegment(cowsId, 'cowsId');
   assertSafePathSegment(batchTimestamp, 'batchTimestamp');
   assertSafePathSegment(filename, 'filename');
-  return `${cowsId}/${batchTimestamp}/${filename}`;
+  return `${organizationId}/${facilityId}/${cowsId}/${batchTimestamp}/${filename}`;
 }
 
 function toGsUri(objectPath, bucketName = config.gcs.bucketName) {

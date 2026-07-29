@@ -7,11 +7,16 @@ import { http, HttpResponse } from 'msw';
 import AppShell from '../../src/components/AppShell.jsx';
 
 const logout = vi.fn();
+const defaultAuth = {
+  user: { name: 'Admin' }, membership: { roleName: 'Org-Admin' }, isSuperAdmin: false,
+  viewScope: { organizationId: 'org1', facilityId: 'fac1' }, logout,
+};
+let mockAuth = { ...defaultAuth };
 vi.mock('../../src/auth/AuthContext.jsx', async () => {
   const actual = await vi.importActual('../../src/auth/AuthContext.jsx');
   return {
     ...actual,
-    useAuth: () => ({ user: { role: 'admin', name: 'Admin' }, logout }),
+    useAuth: () => mockAuth,
   };
 });
 
@@ -40,10 +45,13 @@ function renderShell() {
 }
 
 describe('AppShell', () => {
-  it('shows the User nav item for admins', () => {
+  afterEach(() => { mockAuth = { ...defaultAuth }; });
+
+  it('shows the Users and Facilities nav items for an Org-Admin', () => {
     mockCows([]);
     renderShell();
-    expect(screen.getByText('User')).toBeInTheDocument();
+    expect(screen.getByText('Users')).toBeInTheDocument();
+    expect(screen.getByText('Facilities')).toBeInTheDocument();
     expect(screen.getByText('Herd content')).toBeInTheDocument();
   });
 
@@ -63,5 +71,38 @@ describe('AppShell', () => {
     renderShell();
     await waitFor(() => expect(screen.getByText('Herd content')).toBeInTheDocument());
     expect(screen.queryByText('2')).not.toBeInTheDocument();
+  });
+
+  it('shows only Users and Organizations for super_admin before any facility is picked - no Upload/Herd/Review/Audit/Dashboard/Facilities', () => {
+    mockAuth = { user: { name: 'Super' }, membership: null, isSuperAdmin: true, viewScope: { organizationId: null, facilityId: null }, logout };
+    mockCows([]);
+    renderShell();
+    expect(screen.getByText('Users')).toBeInTheDocument();
+    expect(screen.getByText('Organizations')).toBeInTheDocument();
+    expect(screen.queryByText('Upload')).not.toBeInTheDocument();
+    expect(screen.queryByText('Herd')).not.toBeInTheDocument();
+    expect(screen.queryByText('Facilities')).not.toBeInTheDocument();
+  });
+
+  it('adds the regular app content nav alongside Users/Organizations once super_admin has picked a facility', () => {
+    mockAuth = { user: { name: 'Super' }, membership: null, isSuperAdmin: true, viewScope: { organizationId: 'org1', facilityId: 'fac1' }, logout };
+    mockCows([]);
+    renderShell();
+    expect(screen.getByText('Users')).toBeInTheDocument();
+    expect(screen.getByText('Organizations')).toBeInTheDocument();
+    expect(screen.getByText('Upload')).toBeInTheDocument();
+    expect(screen.getByText('Herd')).toBeInTheDocument();
+    expect(screen.getByText('Review')).toBeInTheDocument();
+    expect(screen.getByText('Audit Log')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+  });
+
+  it('shows only the regular app content (no Users/Facilities) for Staff', () => {
+    mockAuth = { user: { name: 'Staffer' }, membership: { roleName: 'Staff' }, isSuperAdmin: false, viewScope: { organizationId: 'org1', facilityId: 'fac1' }, logout };
+    mockCows([]);
+    renderShell();
+    expect(screen.queryByText('Users')).not.toBeInTheDocument();
+    expect(screen.queryByText('Facilities')).not.toBeInTheDocument();
+    expect(screen.getByText('Upload')).toBeInTheDocument();
   });
 });

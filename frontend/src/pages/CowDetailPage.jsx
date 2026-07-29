@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { useScopedNavigate } from '../auth/useScopedNavigate.js';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, ClipboardList, Plus, X } from 'lucide-react';
 import { cowsApi } from '../api/cows.js';
@@ -223,7 +224,7 @@ function ModelScoreChip({ label, value }) {
 // needs 2x the pixels for a sharp render) - falling back to the original if
 // it 404s. The opened gallery uses the same 600X600 variant.
 function AnalysisCard({ analysis: initial, onOpenImages }) {
-  const navigate = useNavigate();
+  const navigate = useScopedNavigate();
   const pending = PENDING_STATUSES.has(initial.status);
   const { analysis: polled } = usePollBcsAnalysis(pending ? initial.id : null);
   const analysis = polled || initial;
@@ -356,7 +357,7 @@ function StatCard({ icon: Icon, value, label }) {
 
 export default function CowDetailPage() {
   const { cowsId } = useParams();
-  const navigate = useNavigate();
+  const navigate = useScopedNavigate();
   const [lightbox, setLightbox] = useState(null); // { images, fallbackImages, index } | null
 
   const { data: cowData } = useQuery({ queryKey: ['cow', cowsId], queryFn: () => cowsApi.get(cowsId) });

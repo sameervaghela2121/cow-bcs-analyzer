@@ -6,6 +6,12 @@ const bcsAnalysisSchema = new mongoose.Schema(
     // via this reference (populate('cow')) rather than denormalized onto
     // this document, so there's only ever one place a cow's id can drift.
     cow: { type: mongoose.Schema.Types.ObjectId, ref: 'Cow', required: true, index: true },
+    // Denormalized (unlike cowsId above) because these are query filters
+    // needed on every tenant-scoped list/dashboard endpoint, not a display
+    // label read once via populate - and they're fixed forever at creation,
+    // so there's no drift risk the way a mutable display string would have.
+    organization: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+    facility: { type: mongoose.Schema.Types.ObjectId, ref: 'Facility', required: true, index: true },
     cowsImages: {
       type: [String],
       required: true,
@@ -30,5 +36,8 @@ const bcsAnalysisSchema = new mongoose.Schema(
   },
   { timestamps: true, collection: 'bcs_analysis' }
 );
+
+// Reviewer worklist: pending analyses at a facility, most recent first.
+bcsAnalysisSchema.index({ facility: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('BcsAnalysis', bcsAnalysisSchema);

@@ -22,20 +22,26 @@ describe('gcsService', () => {
     expect(ts).toBe('2026-07-16T10-15-30-123Z');
   });
 
-  it('builds the cowsId/batchTimestamp/filename object path', () => {
-    const objectPath = buildObjectPath({ cowsId: '3124', batchTimestamp: '2026-07-16T10-15-30-123Z', filename: 'a.jpg' });
-    expect(objectPath).toBe('3124/2026-07-16T10-15-30-123Z/a.jpg');
+  it('builds the organizationId/facilityId/cowsId/batchTimestamp/filename object path', () => {
+    const objectPath = buildObjectPath({
+      organizationId: 'org1',
+      facilityId: 'fac1',
+      cowsId: '3124',
+      batchTimestamp: '2026-07-16T10-15-30-123Z',
+      filename: 'a.jpg',
+    });
+    expect(objectPath).toBe('org1/fac1/3124/2026-07-16T10-15-30-123Z/a.jpg');
   });
 
   it('converts an object path to a gs:// URI and back', () => {
-    const objectPath = '3124/2026-07-16T10-15-30-123Z/a.jpg';
+    const objectPath = 'org1/fac1/3124/2026-07-16T10-15-30-123Z/a.jpg';
     const uri = toGsUri(objectPath);
-    expect(uri).toMatch(/^gs:\/\/.+\/3124\/2026-07-16T10-15-30-123Z\/a\.jpg$/);
+    expect(uri).toMatch(/^gs:\/\/.+\/org1\/fac1\/3124\/2026-07-16T10-15-30-123Z\/a\.jpg$/);
     expect(fromGsUri(uri).objectPath).toBe(objectPath);
   });
 
   it('generates a v4 signed PUT URL bound to the given content type', async () => {
-    const url = await generateUploadUrl({ objectPath: '3124/ts/a.jpg', contentType: 'image/jpeg' });
+    const url = await generateUploadUrl({ objectPath: 'org1/fac1/3124/ts/a.jpg', contentType: 'image/jpeg' });
     expect(url).toBe('https://storage.googleapis.com/signed-put-url');
     expect(mockGetSignedUrl).toHaveBeenCalledWith(
       expect.objectContaining({ version: 'v4', action: 'write', contentType: 'image/jpeg' })

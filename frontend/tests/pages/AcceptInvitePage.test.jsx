@@ -33,7 +33,13 @@ describe('AcceptInvitePage', () => {
         sentBody = await request.json();
         return HttpResponse.json({
           accessToken: 'acc',
-          user: { id: '1', email: 'invitee@example.com', name: 'Invitee', role: 'staff' },
+          user: { id: '1', email: 'invitee@example.com', name: 'Invitee', status: 'active' },
+          membership: {
+            id: 'm1',
+            organization: { id: 'org1', name: 'Good Farm', slug: 'good-farm' },
+            facility: { id: 'fac1', name: 'Modasa', slug: 'modasa' },
+            role: { id: 'r1', name: 'Staff' },
+          },
         });
       })
     );

@@ -61,7 +61,7 @@ export function describeFinalScore(analysis) {
   }
   if (bcsScore.isMeanAccurate) matched.push('Mean');
   if (bcsScore.isMedianAccurate) matched.push('Median');
-  return { label: matched.length > 0 ? matched.join(' + ') : 'Override', score: analysis.finalBcs };
+  return { label: matched.length > 0 ? matched.join(', ') : 'Override', score: analysis.finalBcs };
 }
 
 // provider_selected reads as an AI decision endorsed by a reviewer, so it

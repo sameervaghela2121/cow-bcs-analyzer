@@ -22,13 +22,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_VISION_MODEL: str = "gpt-4.1"
 
-    # --- Anthropic / Claude (via AWS Bedrock) ---
-    ANTHROPIC_API_KEY: str | None = None  # bearer token for Bedrock (optional)
-    CLAUDE_VISION_MODEL: str = "anthropic.claude-sonnet-4-6"
-
-    # --- AWS credentials (for Bedrock) ---
-    AWS_ACCESS_KEY_ID: str | None = None
-    AWS_SECRET_ACCESS_KEY: str | None = None
+    # --- Anthropic / Claude ---
+    ANTHROPIC_API_KEY: str | None = None
+    CLAUDE_VISION_MODEL: str = "claude-sonnet-4-6"
 
     # --- Google Gemini ---
     GEMINI_API_KEY: str | None = None
@@ -38,7 +34,7 @@ class Settings(BaseSettings):
     MAX_IMAGE_SIZE_MB: int = 10
     ALLOWED_IMAGE_TYPES: tuple[str, ...] = ("image/jpeg", "image/png", "image/webp")
 
-    # --- AWS S3 / Bedrock region ---
+    # --- AWS S3 ---
     AWS_REGION: str = "us-east-1"
     AWS_S3_BUCKET: str | None = None
 
