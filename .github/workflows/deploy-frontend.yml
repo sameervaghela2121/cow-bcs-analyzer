@@ -47,4 +47,4 @@ jobs:
           service: bcs-frontend
           region: ${{ env.REGION }}
           image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
-          flags: --allow-unauthenticated --port=8080 --memory=256Mi --min-instances=0 --max-instances=5 --service-account=bcs-frontend-run@sameerv.iam.gserviceaccount.com
+          flags: --allow-unauthenticated --port=8080 --memory=2Gi --min-instances=1 --max-instances=5 --no-cpu-throttling --service-account=bcs-frontend-run@sameerv.iam.gserviceaccount.com
