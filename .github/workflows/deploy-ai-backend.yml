@@ -45,13 +45,13 @@ jobs:
           # that background work gets starved of CPU once the response
           # flushes - which shows up as GCS downloads dying mid-TLS-
           # handshake (SSLEOFError) and hitting their 120s timeout.
-          flags: --allow-unauthenticated --port=8080 --memory=1Gi --cpu=1 --min-instances=0 --max-instances=3 --timeout=300 --no-cpu-throttling --service-account=bcs-ai-backend-reader@sameerv.iam.gserviceaccount.com
+          flags: --allow-unauthenticated --port=8080 --memory=2Gi --cpu=1 --min-instances=1 --max-instances=3 --timeout=300 --no-cpu-throttling --service-account=bcs-ai-backend-reader@sameerv.iam.gserviceaccount.com
           env_vars: |
             ENV=production
             DEBUG=false
             DEFAULT_LLM_PROVIDER=gemini
             OPENAI_VISION_MODEL=gpt-4.1
-            CLAUDE_VISION_MODEL=us.anthropic.claude-sonnet-4-6
+            CLAUDE_VISION_MODEL=claude-sonnet-4-6
             GEMINI_VISION_MODEL=gemini-3.5-flash
             MAX_IMAGE_SIZE_MB=10
             AWS_REGION=us-east-1
