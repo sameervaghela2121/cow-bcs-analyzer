@@ -14,7 +14,7 @@ const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreads
 
 const MODES = [
   { id: 'bcs', label: 'BCS Photos' },
-  { id: 'milking', label: 'Milking Data' },
+  // { id: 'milking', label: 'Milking Data' },
 ];
 
 const PHASE_LABEL = {
