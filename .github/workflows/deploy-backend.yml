@@ -46,7 +46,12 @@ jobs:
           service: bcs-backend
           region: ${{ env.REGION }}
           image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
-          flags: --allow-unauthenticated --port=8080 --memory=2Gi --min-instances=1 --max-instances=3 --no-cpu-throttling --service-account=bcs-backend-uploader@sameerv.iam.gserviceaccount.com
+          # --remove-env-vars clears IMAGE_COMPRESSOR_URL's old plain-string
+          # env var before --update-secrets re-adds it as a secret ref below -
+          # gcloud run deploy refuses to change an existing env var's type
+          # (string -> secret) in one step otherwise. Safe to leave in
+          # permanently: removing an already-absent var is a no-op.
+          flags: --allow-unauthenticated --port=8080 --memory=2Gi --min-instances=1 --max-instances=3 --no-cpu-throttling --service-account=bcs-backend-uploader@sameerv.iam.gserviceaccount.com --remove-env-vars=IMAGE_COMPRESSOR_URL
           env_vars: |
             SMTP_HOST=email-smtp.ap-south-1.amazonaws.com
             SMTP_PORT=587
