@@ -15,11 +15,6 @@ env:
   REGION: asia-south1
   REGISTRY: asia-south1-docker.pkg.dev/sameerv/bcs-tracker
   FRONTEND_URL: https://bcs-frontend-1081873675658.asia-south1.run.app
-  # Gen2 Cloud Function URL (stable across redeploys). The backend image
-  # only ever ships backend/src/ (see Dockerfile) - it has no local copy of
-  # image-compressor/ to fall back to in-process, so this must be set for
-  # production; unset only makes sense for local dev.
-  IMAGE_COMPRESSOR_URL: https://bcs-image-compressor-ne7pxyotba-el.a.run.app
 
 permissions:
   contents: read
@@ -61,9 +56,9 @@ jobs:
             GCS_PROJECT_ID=sameerv
             GCS_SIGNED_URL_EXPIRY_MS=900000
             FRONTEND_URL=${{ env.FRONTEND_URL }}
-            IMAGE_COMPRESSOR_URL=${{ env.IMAGE_COMPRESSOR_URL }}
           secrets: |
             MONGODB_URL=bcs-mongodb-url:latest
             JWT_ACCESS_SECRET=bcs-jwt-access-secret:latest
             SMTP_USER=bcs-smtp-user:latest
             SMTP_PASSWORD=bcs-smtp-password:latest
+            IMAGE_COMPRESSOR_URL=bcs-image-compressor-url:latest
