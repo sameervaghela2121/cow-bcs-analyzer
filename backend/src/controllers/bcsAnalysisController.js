@@ -246,6 +246,36 @@ async function getOne(req, res, next) {
   }
 }
 
+// Powers the Dashboard's stats/charts (dashboardStats.js) - previously built
+// client-side by firing one /cows/:cowsId/analyses request PER COW in the
+// herd (see useDashboardData.js's old useQueries fan-out), each of which ran
+// serializeBcsAnalysis and generated 3 signed GCS URLs per image, none of
+// which the dashboard's charts ever use. That was O(cows) requests, each
+// paying for image-URL work nobody read - a facility with a few hundred
+// cows meant hundreds of requests and each one queueing behind expensive
+// signing work. This is one query instead: no images, no per-cow fan-out,
+// just the handful of numeric/status fields the stats functions consume.
+async function dashboardSummary(req, res, next) {
+  try {
+    const docs = await BcsAnalysis.find({ facility: req.scope.facilityId })
+      .select('cow createdAt status finalBcs bcsScore isApproved')
+      .populate('cow', 'cowsId')
+      .lean();
+    res.json({
+      analyses: docs.map((doc) => ({
+        cowsId: doc.cow?.cowsId ?? null,
+        createdAt: doc.createdAt,
+        status: doc.status,
+        finalBcs: doc.finalBcs,
+        bcsScore: doc.bcsScore,
+        isApproved: doc.isApproved,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // Reviewer clicks exactly one of the 5 candidates (3 providers + computed
 // mean + computed median). Every candidate whose value exactly matches that
 // pick is marked isTrue too - so picking Median, which happens to equal
@@ -349,4 +379,4 @@ async function override(req, res, next) {
   }
 }
 
-module.exports = { generateUploadUrls, create, getOne, selectScore, override, serializeBcsAnalysis };
+module.exports = { generateUploadUrls, create, getOne, selectScore, override, serializeBcsAnalysis, dashboardSummary };

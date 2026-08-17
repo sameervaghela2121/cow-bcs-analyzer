@@ -1,34 +1,25 @@
-import { useMemo } from 'react';
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { cowsApi } from '../api/cows.js';
+import { bcsAnalysisApi } from '../api/bcsAnalysis.js';
 
-// No aggregate/stats endpoint exists on the backend, and this dashboard is
-// built without adding one - so "every analysis in the herd" is assembled
-// client-side: one /cows call for the roster, then one /cows/:id/analyses
-// call per cow, fanned out in parallel via useQueries. That's O(cows)
-// requests, which is fine at the herd sizes this app runs at today; if the
-// herd grows into the hundreds+ this should move to a real backend
-// aggregation instead of scaling the fan-out further.
+// Two requests total, flat regardless of herd size: the cow roster, and
+// every analysis in the facility via one backend aggregation
+// (dashboard-summary) rather than firing /cows/:id/analyses once per cow.
+// That used to be O(cows) requests, each of which also generated 3 signed
+// GCS URLs per image for data these charts never render - hundreds of
+// wasted, slow round-trips on any herd of meaningful size.
 export function useDashboardData() {
   const { data: cowsData, isLoading: cowsLoading } = useQuery({
     queryKey: ['cows-all'],
     queryFn: () => cowsApi.list({ limit: 1000 }),
   });
-  const cows = cowsData?.cows || [];
-
-  const analysesQueries = useQueries({
-    queries: cows.map((cow) => ({
-      queryKey: ['cow-analyses', cow.cowsId],
-      queryFn: () => cowsApi.analyses(cow.cowsId, { limit: 200 }),
-      enabled: !!cow.cowsId,
-    })),
+  const { data: analysesData, isLoading: analysesLoading } = useQuery({
+    queryKey: ['dashboard-analyses'],
+    queryFn: () => bcsAnalysisApi.dashboardSummary(),
   });
-  const analysesLoading = cows.length > 0 && analysesQueries.some((q) => q.isLoading);
-  const allAnalyses = useMemo(
-    () => analysesQueries.flatMap((q) => q.data?.bcsAnalyses || []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [analysesQueries.map((q) => q.dataUpdatedAt).join(',')]
-  );
+
+  const cows = cowsData?.cows || [];
+  const allAnalyses = analysesData?.analyses || [];
 
   return { cows, allAnalyses, isLoading: cowsLoading || analysesLoading };
 }

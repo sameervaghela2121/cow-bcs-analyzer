@@ -54,11 +54,13 @@ describe('DashboardPage', () => {
           total: 2,
         })
       ),
-      http.get('http://localhost:4000/api/cows/1001/analyses', () =>
-        HttpResponse.json({ bcsAnalyses: [analysis({ cowsId: '1001', meanScore: 2.0, isApproved: false })], total: 1 })
-      ),
-      http.get('http://localhost:4000/api/cows/1002/analyses', () =>
-        HttpResponse.json({ bcsAnalyses: [analysis({ cowsId: '1002', meanScore: 3.5, isApproved: true })], total: 1 })
+      http.get('http://localhost:4000/api/bcs-analysis/dashboard-summary', () =>
+        HttpResponse.json({
+          analyses: [
+            analysis({ cowsId: '1001', meanScore: 2.0, isApproved: false }),
+            analysis({ cowsId: '1002', meanScore: 3.5, isApproved: true }),
+          ],
+        })
       )
     );
 
@@ -80,7 +82,10 @@ describe('DashboardPage', () => {
   });
 
   it('renders an empty-state herd without crashing', async () => {
-    server.use(http.get('http://localhost:4000/api/cows', () => HttpResponse.json({ cows: [], total: 0 })));
+    server.use(
+      http.get('http://localhost:4000/api/cows', () => HttpResponse.json({ cows: [], total: 0 })),
+      http.get('http://localhost:4000/api/bcs-analysis/dashboard-summary', () => HttpResponse.json({ analyses: [] }))
+    );
     renderDashboard();
     await waitFor(() => expect(screen.getByText('Herd size')).toBeInTheDocument());
     expect(screen.getByText('Nothing flagged — herd looks good.')).toBeInTheDocument();

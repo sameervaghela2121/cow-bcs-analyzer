@@ -83,12 +83,14 @@ function ReviewRow({ cow }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { data } = useQuery({
-    queryKey: ['cow-analyses', cow.cowsId],
-    queryFn: () => cowsApi.analyses(cow.cowsId),
+    queryKey: ['cow-analyses', cow.cowsId, 'latest'],
+    // Analyses come back newest-first, and cow.latestAnalysisStatus (from
+    // the cows list) is by definition that same newest record's status - so
+    // [0] here is guaranteed to be that exact analysis. limit: 1 means the
+    // backend only ever serializes (and signs image URLs for) that one
+    // record instead of every past analysis this cow has ever had.
+    queryFn: () => cowsApi.analyses(cow.cowsId, { limit: 1 }),
   });
-  // Analyses come back newest-first, and cow.latestAnalysisStatus (from the
-  // cows list) is by definition that same newest record's status - so once
-  // it's "completed", [0] here is guaranteed to be that exact analysis.
   const latest = data?.bcsAnalyses?.[0];
 
   // Which candidate the reviewer clicked - null until they pick one. Not

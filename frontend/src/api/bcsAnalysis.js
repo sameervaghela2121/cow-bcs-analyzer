@@ -19,6 +19,10 @@ export const bcsAnalysisApi = {
     apiClient.patch(`/bcs-analysis/${id}/select`, { source }).then((r) => r.data.bcsAnalysis),
 
   override: (id, score) => apiClient.patch(`/bcs-analysis/${id}/override`, { score }).then((r) => r.data.bcsAnalysis),
+
+  // Powers the Dashboard's charts/stats in one facility-wide query - no
+  // images, no per-cow fan-out. See useDashboardData.js.
+  dashboardSummary: () => apiClient.get('/bcs-analysis/dashboard-summary').then((r) => r.data),
 };
 
 // Uploads go straight to GCS via a signed URL, never through the Node
