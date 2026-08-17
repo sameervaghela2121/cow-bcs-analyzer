@@ -33,7 +33,11 @@ const milkingRecordSchema = new mongoose.Schema(
   { timestamps: true, collection: 'milking_records' }
 );
 
-milkingRecordSchema.index({ cow: 1, milkSessionAt: 1 });
-milkingRecordSchema.index({ cowGroup: 1, milkSessionAt: 1 });
+// _id trails as a tiebreaker on both indexes: Mongo's sort is unstable
+// across ties on milkSessionAt alone (a whole shift/day of records shares
+// the exact same value), so a stable trailing key is required for
+// skip/limit pagination to give consistent results across pages.
+milkingRecordSchema.index({ cow: 1, milkSessionAt: 1, _id: 1 });
+milkingRecordSchema.index({ cowGroup: 1, milkSessionAt: 1, _id: 1 });
 
 module.exports = mongoose.model('MilkingRecord', milkingRecordSchema);

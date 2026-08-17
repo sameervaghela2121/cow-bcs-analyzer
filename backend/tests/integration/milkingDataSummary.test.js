@@ -92,7 +92,10 @@ describe('GET /api/milking-data/summary', () => {
     const res = await get({ startDate: '2026-08-10', endDate: '2026-08-11' });
 
     expect(res.status).toBe(200);
-    expect(res.body.daily).toHaveLength(1);
+    // Every day in the requested range is present (2026-08-10 with data,
+    // 2026-08-11 zeroed) - see Finding 2's fix to reshapeDaily.
+    expect(res.body.daily).toHaveLength(2);
+    expect(res.body.daily.find((d) => d.date === '2026-08-11')).toMatchObject({ totalMilk: 0, recordCount: 0 });
     expect(res.body.stats.totalMilk).toBe(10);
     expect(res.body.stats.recordCount).toBe(1);
   });
@@ -111,8 +114,9 @@ describe('GET /api/milking-data/summary', () => {
     const res = await get({ startDate: '2026-08-10', endDate: '2026-08-11', groupId: String(groupOne._id) });
 
     expect(res.status).toBe(200);
-    expect(res.body.daily).toHaveLength(1);
-    expect(res.body.daily[0].totalMilk).toBe(10);
+    expect(res.body.daily).toHaveLength(2);
+    expect(res.body.daily.find((d) => d.date === '2026-08-10').totalMilk).toBe(10);
+    expect(res.body.daily.find((d) => d.date === '2026-08-11')).toMatchObject({ totalMilk: 0, recordCount: 0 });
     expect(res.body.stats.totalMilk).toBe(10);
     expect(res.body.stats.recordCount).toBe(1);
     expect(res.body.stats.cowsReporting).toBe(1);
@@ -128,8 +132,9 @@ describe('GET /api/milking-data/summary', () => {
     const res = await get({ startDate: '2026-08-10', endDate: '2026-08-11', shift: 'Morning' });
 
     expect(res.status).toBe(200);
-    expect(res.body.daily).toHaveLength(1);
-    expect(res.body.daily[0].byShift).toEqual({ Morning: 10, Afternoon: 0, Evening: 0 });
+    expect(res.body.daily).toHaveLength(2);
+    expect(res.body.daily.find((d) => d.date === '2026-08-10').byShift).toEqual({ Morning: 10, Afternoon: 0, Evening: 0 });
+    expect(res.body.daily.find((d) => d.date === '2026-08-11')).toMatchObject({ byShift: { Morning: 0, Afternoon: 0, Evening: 0 } });
     expect(res.body.stats.totalMilk).toBe(10);
     expect(res.body.stats.recordCount).toBe(1);
   });
@@ -151,12 +156,35 @@ describe('GET /api/milking-data/summary', () => {
     expect(typeof res.body.error).toBe('string');
   });
 
-  it('returns 200 with empty/zeroed shape when no records match the filters', async () => {
+  it('returns 200 with every requested day zeroed (not absent) when no records match the filters', async () => {
     const res = await get({ startDate: '2026-08-10', endDate: '2026-08-11' });
 
     expect(res.status).toBe(200);
-    expect(res.body.daily).toEqual([]);
+    expect(res.body.daily).toEqual([
+      { date: '2026-08-10', totalMilk: 0, recordCount: 0, byShift: { Morning: 0, Afternoon: 0, Evening: 0 } },
+      { date: '2026-08-11', totalMilk: 0, recordCount: 0, byShift: { Morning: 0, Afternoon: 0, Evening: 0 } },
+    ]);
     expect(res.body.stats).toEqual({ totalMilk: 0, recordCount: 0, cowsReporting: 0, groupsActive: 0, avgPerCow: 0 });
+  });
+
+  it('seeds a zeroed entry for a middle day with no matching records, instead of omitting it (Finding 2)', async () => {
+    const cowA = await Cow.create({ cowsId: '701', facility: facility._id });
+    await MilkingRecord.create([
+      { cow: cowA._id, milkingShift: 'Morning', milk: 10, milkSessionAt: sessionAt('2026-08-10', '05') },
+      { cow: cowA._id, milkingShift: 'Evening', milk: 12, milkSessionAt: sessionAt('2026-08-12', '19') },
+    ]);
+
+    const res = await get({ startDate: '2026-08-10', endDate: '2026-08-12' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.daily.map((d) => d.date)).toEqual(['2026-08-10', '2026-08-11', '2026-08-12']);
+    const middleDay = res.body.daily.find((d) => d.date === '2026-08-11');
+    expect(middleDay).toEqual({
+      date: '2026-08-11',
+      totalMilk: 0,
+      recordCount: 0,
+      byShift: { Morning: 0, Afternoon: 0, Evening: 0 },
+    });
   });
 
   it('returns 401 when no auth token is provided', async () => {

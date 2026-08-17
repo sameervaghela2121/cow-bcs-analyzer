@@ -190,4 +190,63 @@ describe('MilkingDashboardPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Milking Dashboard')).toBeInTheDocument());
   });
+
+  it('selecting a cow then a group drops cowId from the request, keeping only groupId (Finding 3)', async () => {
+    const seenRecordsParams = [];
+    mockAll({
+      onRecords: (req) => seenRecordsParams.push(new URL(req.url).searchParams),
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('option', { name: '4417' })).toBeInTheDocument());
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.selectOptions(screen.getByLabelText('Cow'), 'c1');
+    await waitFor(() => expect(seenRecordsParams[seenRecordsParams.length - 1].get('cowId')).toBe('c1'));
+
+    await user.selectOptions(screen.getByLabelText('Group'), 'g1');
+    await waitFor(() => {
+      const last = seenRecordsParams[seenRecordsParams.length - 1];
+      expect(last.get('groupId')).toBe('g1');
+      expect(last.get('cowId')).toBeNull();
+    });
+  });
+
+  it('selecting a group then a cow drops groupId from the request, keeping only cowId (Finding 3)', async () => {
+    const seenRecordsParams = [];
+    mockAll({
+      onRecords: (req) => seenRecordsParams.push(new URL(req.url).searchParams),
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('option', { name: '4417' })).toBeInTheDocument());
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.selectOptions(screen.getByLabelText('Group'), 'g1');
+    await waitFor(() => expect(seenRecordsParams[seenRecordsParams.length - 1].get('groupId')).toBe('g1'));
+
+    await user.selectOptions(screen.getByLabelText('Cow'), 'c1');
+    await waitFor(() => {
+      const last = seenRecordsParams[seenRecordsParams.length - 1];
+      expect(last.get('cowId')).toBe('c1');
+      expect(last.get('groupId')).toBeNull();
+    });
+  });
+
+  it('renders a visible error message instead of silent zeros when the summary request fails (Finding 5)', async () => {
+    server.use(
+      http.get('http://localhost:4000/api/milking-data/summary', () =>
+        HttpResponse.json({ error: 'startDate must not be after endDate.' }, { status: 400 })
+      ),
+      http.get('http://localhost:4000/api/milking-data/records', () =>
+        HttpResponse.json({ records: recordsFixture, total: recordsFixture.length, limit: 50, offset: 0 })
+      ),
+      http.get('http://localhost:4000/api/cow-groups', () => HttpResponse.json({ cowGroups: groupsFixture })),
+      http.get('http://localhost:4000/api/cows', () => HttpResponse.json({ cows: cowsFixture, total: cowsFixture.length }))
+    );
+    renderPage();
+
+    // The server's actual error message is now visible on the page, rather
+    // than the request silently failing and the dashboard rendering as an
+    // indistinguishable-looking zero-production facility.
+    expect(await screen.findByText('startDate must not be after endDate.')).toBeInTheDocument();
+  });
 });

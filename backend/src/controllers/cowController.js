@@ -66,7 +66,14 @@ async function getOne(req, res, next) {
 
 async function list(req, res, next) {
   try {
-    const { search, page = 1, limit = 100 } = req.query;
+    const { search, page = 1, limit: rawLimit, lite } = req.query;
+    const isLite = lite === 'true' || lite === true;
+    // Lite mode is for lightweight ID dropdowns (e.g. the milking dashboard
+    // filter bar) - it skips the BcsAnalysis aggregation and per-cow GCS
+    // signed-URL generation below entirely, and defaults to a much higher
+    // cap than the normal herd-grid page size so a facility's whole roster
+    // fits in one dropdown. An explicit ?limit= still overrides either way.
+    const limit = rawLimit !== undefined ? rawLimit : isLite ? 1000 : 100;
     const query = { facility: req.scope.facilityId };
     if (search && search.trim()) query.cowsId = { $regex: search.trim(), $options: 'i' };
 
@@ -77,6 +84,13 @@ async function list(req, res, next) {
         .skip((Number(page) - 1) * Number(limit))
         .limit(Number(limit)),
     ]);
+
+    if (isLite) {
+      return res.json({
+        cows: cows.map((c) => ({ id: c._id.toString(), cowsId: c.cowsId })),
+        total,
+      });
+    }
 
     const latestAnalysisByCow = await BcsAnalysis.aggregate([
       { $match: { cow: { $in: cows.map((c) => c._id) } } },

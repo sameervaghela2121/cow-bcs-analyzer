@@ -29,7 +29,12 @@ export default function MilkingFilterBar({ startDate, endDate, groupId, cowId, s
   });
   const { data: cowsData } = useQuery({
     queryKey: ['cows-for-filter'],
-    queryFn: () => cowsApi.list({ limit: 100 }),
+    // lite:true skips the BcsAnalysis aggregation and per-cow GCS
+    // signed-URL generation server-side (irrelevant for a plain ID
+    // dropdown) and raises the effective cap well past the normal
+    // 100-cow herd-grid page size, so a large facility's whole roster
+    // is selectable here (Finding 4).
+    queryFn: () => cowsApi.list({ lite: true, limit: 1000 }),
     staleTime: 60000,
   });
   const groups = groupsData?.cowGroups ?? [];

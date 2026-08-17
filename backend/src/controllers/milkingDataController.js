@@ -69,8 +69,26 @@ async function importUpload(req, res, next) {
   }
 }
 
-function reshapeDaily(rows) {
+// Every calendar day between startDate/endDate (inclusive) must appear in
+// the output even when the aggregation returned no rows for it, so the
+// caller can tell "zero production that day" apart from "day is missing" -
+// ProductionChart draws a straight line across any gap in the array, which
+// would otherwise misrepresent a genuinely zero day as continuous
+// production. Seed every day as zeroed first, then fold in the real rows.
+function seedByDate(startDate, endDate) {
   const byDate = new Map();
+  let cursor = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+  while (cursor <= end) {
+    const dateStr = cursor.toISOString().slice(0, 10);
+    byDate.set(dateStr, { date: dateStr, totalMilk: 0, recordCount: 0, byShift: { Morning: 0, Afternoon: 0, Evening: 0 } });
+    cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return byDate;
+}
+
+function reshapeDaily(rows, startDate, endDate) {
+  const byDate = seedByDate(startDate, endDate);
   for (const row of rows) {
     const { date, shift } = row._id;
     if (!byDate.has(date)) {
@@ -148,7 +166,7 @@ async function summary(req, res, next) {
       },
     ]);
 
-    res.json({ daily: reshapeDaily(result.daily), stats: reshapeStats(result.stats) });
+    res.json({ daily: reshapeDaily(result.daily, startDate, endDate), stats: reshapeStats(result.stats) });
   } catch (err) {
     next(err);
   }
@@ -180,7 +198,13 @@ async function records(req, res, next) {
     const numericLimit = Math.min(MAX_LIMIT, Math.max(1, Number(limit) || DEFAULT_LIMIT));
     const numericOffset = Math.max(0, Number(offset) || 0);
 
-    const sortStage = { [SORT_FIELDS[sortBy]]: sortOrder === 'asc' ? 1 : -1 };
+    // _id tiebreaker: real milking data has huge numbers of records sharing
+    // the exact same milkSessionAt (a whole shift/day) or the exact same
+    // milk value (many zero-milk cells). Mongo's sort is unstable across
+    // ties, so without a unique trailing key, two separate skip/limit page
+    // queries aren't guaranteed to agree on ordering - rows can duplicate
+    // across pages or vanish entirely.
+    const sortStage = { [SORT_FIELDS[sortBy]]: sortOrder === 'asc' ? 1 : -1, _id: 1 };
 
     const [total, docs] = await Promise.all([
       MilkingRecord.countDocuments(match),

@@ -81,6 +81,36 @@ describe('GET /api/milking-data/records', () => {
     expect(page3.body.records).toHaveLength(1);
   });
 
+  it('pages through records with no duplicates or gaps when many rows share the exact same milkSessionAt (Finding 1)', async () => {
+    const cow = await Cow.create({ cowsId: '901', facility: facility._id });
+    const sharedTimestamp = sessionAt('2026-08-10', '05');
+
+    // All 6 records share the exact same milkSessionAt - the scenario that
+    // let the original tiebreaker-less sort slip through: Mongo's sort
+    // order among ties is unstable without a trailing _id key, so two
+    // separate skip/limit queries aren't guaranteed to agree.
+    const created = await MilkingRecord.create(
+      Array.from({ length: 6 }, (_, i) => ({
+        cow: cow._id,
+        milkingShift: 'Morning',
+        milk: i,
+        milkSessionAt: sharedTimestamp,
+      }))
+    );
+    const expectedIds = created.map((r) => r._id.toString()).sort();
+
+    const seenIds = [];
+    for (let offset = 0; offset < 6; offset += 2) {
+      const res = await get({ startDate: '2026-08-10', endDate: '2026-08-10', limit: 2, offset });
+      expect(res.status).toBe(200);
+      seenIds.push(...res.body.records.map((r) => r.id));
+    }
+
+    expect(seenIds.length).toBe(6);
+    expect(new Set(seenIds).size).toBe(6); // no duplicates across pages
+    expect(seenIds.sort()).toEqual(expectedIds); // no gaps - full set covered
+  });
+
   it('defaults to sorting by milkSessionAt descending (most recent first)', async () => {
     const cow = await Cow.create({ cowsId: '301', facility: facility._id });
 

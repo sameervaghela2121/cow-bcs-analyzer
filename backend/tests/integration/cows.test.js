@@ -104,6 +104,33 @@ describe('GET /api/cows (herd list)', () => {
     expect(res2.body.cows.map((c) => c.cowsId)).toEqual(['1002']);
   });
 
+  it('lite=true returns a minimal id/cowsId shape without triggering BcsAnalysis aggregation or signed URLs (Finding 4)', async () => {
+    generateReadUrl.mockClear();
+    const res = await request(app).get('/api/cows?lite=true').set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(3);
+    expect(res.body.cows.map((c) => c.cowsId).sort()).toEqual(['1001', '1002', '1003']);
+    for (const cow of res.body.cows) {
+      expect(Object.keys(cow).sort()).toEqual(['cowsId', 'id']);
+      expect(cow).not.toHaveProperty('latestBcsScore');
+      expect(cow).not.toHaveProperty('latestAnalysisThumbnailUrl');
+    }
+    // No per-cow GCS signed-URL generation in lite mode.
+    expect(generateReadUrl).not.toHaveBeenCalled();
+  });
+
+  it('lite=true defaults to a higher effective limit than the normal 100-cow cap', async () => {
+    await Cow.insertMany(
+      Array.from({ length: 150 }, (_, i) => ({ facility: facility._id, cowsId: `lite-${i}` }))
+    );
+
+    const res = await request(app).get('/api/cows?lite=true').set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.cows.length).toBeGreaterThan(100);
+  });
+
   it('has no latestAnalysisStatus for a cow with no uploads yet', async () => {
     const res = await request(app).get('/api/cows?search=1001').set('Authorization', `Bearer ${token}`);
     expect(res.body.cows[0].latestAnalysisStatus).toBeNull();
