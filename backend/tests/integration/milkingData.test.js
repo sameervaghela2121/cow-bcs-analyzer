@@ -64,24 +64,24 @@ describe('POST /api/milking-data/import', () => {
   afterAll(async () => { await closeDatabase(); });
 
   function objectPath() {
-    return `${organization._id}/${facility._id}/2026-07-22/scr.xlsx`;
+    return `${organization._id}/${facility._id}/2026-07-22/daily.xlsx`;
   }
 
-  it('triggers the importer with the milking bucket, objectPath, and the caller\'s own organizationId/facilityId, returning its result', async () => {
-    triggerMilkingImport.mockResolvedValue({ source: 'SCR', recordsInserted: 4 });
+  it('triggers the importer with the milking bucket, objectPath, milkingDate and the caller\'s facilityId, returning its result', async () => {
+    triggerMilkingImport.mockResolvedValue({ recordsInserted: 4 });
 
     const res = await request(app)
       .post('/api/milking-data/import')
       .set('Authorization', `Bearer ${token}`)
-      .send({ objectPath: objectPath() });
+      .send({ objectPath: objectPath(), milkingDate: '2026-08-12' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ source: 'SCR', recordsInserted: 4 });
+    expect(res.body).toEqual({ recordsInserted: 4 });
     expect(triggerMilkingImport).toHaveBeenCalledWith({
       bucketName: config.milking.bucketName,
       objectPath: objectPath(),
-      organizationId: organization._id.toString(),
-      facilityId: facility._id.toString(),
+      milkingDate: '2026-08-12',
+      facilityId: String(facility._id),
     });
   });
 
@@ -91,7 +91,7 @@ describe('POST /api/milking-data/import', () => {
     const res = await request(app)
       .post('/api/milking-data/import')
       .set('Authorization', `Bearer ${token}`)
-      .send({ objectPath: objectPath() });
+      .send({ objectPath: objectPath(), milkingDate: '2026-08-12' });
 
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
@@ -106,7 +106,7 @@ describe('POST /api/milking-data/import', () => {
     const res = await request(app)
       .post('/api/milking-data/import')
       .set('Authorization', `Bearer ${token}`)
-      .send({ objectPath: objectPath() });
+      .send({ objectPath: objectPath(), milkingDate: '2026-08-12' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe(
@@ -118,7 +118,16 @@ describe('POST /api/milking-data/import', () => {
     const res = await request(app)
       .post('/api/milking-data/import')
       .set('Authorization', `Bearer ${token}`)
-      .send({ objectPath: '2026-07-22/scr.xlsx' }); // missing the organizationId/facilityId prefix segments
+      .send({ objectPath: '2026-07-22/daily.xlsx', milkingDate: '2026-08-12' }); // missing the organizationId/facilityId prefix segments
+    expect(res.status).toBe(400);
+    expect(triggerMilkingImport).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing or malformed milkingDate', async () => {
+    const res = await request(app)
+      .post('/api/milking-data/import')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ objectPath: objectPath(), milkingDate: '12-08-2026' }); // wrong shape
     expect(res.status).toBe(400);
     expect(triggerMilkingImport).not.toHaveBeenCalled();
   });

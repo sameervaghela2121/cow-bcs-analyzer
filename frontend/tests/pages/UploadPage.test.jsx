@@ -215,7 +215,7 @@ describe('UploadPage', () => {
       }),
       http.post('http://localhost:4000/api/milking-data/import', async ({ request }) => {
         importBody = await request.json();
-        return HttpResponse.json({ source: 'SCR', recordsInserted: 4 });
+        return HttpResponse.json({ recordsInserted: 4 });
       })
     );
 
@@ -223,18 +223,20 @@ describe('UploadPage', () => {
     await user.click(screen.getByRole('button', { name: /milking data/i }));
 
     const input = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
-    const file = new File(['fake-bytes'], 'scr-export.xlsx', {
+    const file = new File(['fake-bytes'], 'daily-export.xlsx', {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     await user.upload(input, file);
     await user.click(screen.getByRole('button', { name: /upload & import/i }));
 
-    expect(await screen.findByText(/import complete: 4 SCR records added/i)).toBeInTheDocument();
+    expect(await screen.findByText(/import complete: 4 milking records added/i)).toBeInTheDocument();
     expect(uploadUrlBody.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     expect(putCalled).toBe(true);
     expect(importBody.objectPath).toBe(`2026-07-22/${uploadUrlBody.filename}`);
+    // The date field defaults to today, and is sent through to the import call.
+    expect(importBody.milkingDate).toBe(new Date().toISOString().slice(0, 10));
     // The picked file is no longer shown once the import succeeds - only the banner remains.
-    expect(screen.queryByText('scr-export.xlsx')).not.toBeInTheDocument();
+    expect(screen.queryByText('daily-export.xlsx')).not.toBeInTheDocument();
   });
 
   it('clears the picked milking file once the GCS upload succeeds, even if the import step afterwards fails', async () => {
@@ -252,7 +254,7 @@ describe('UploadPage', () => {
       http.put('https://storage.googleapis.com/sameerv-cow-milking-data/2026-07-22/:filename', () => new HttpResponse(null, { status: 200 })),
       http.post('http://localhost:4000/api/milking-data/import', () =>
         HttpResponse.json(
-          { error: 'This file is missing the Cow Id for row 3. Please fill in the Cow Id for every row and re-upload the file. No records were imported.' },
+          { error: 'This file is missing the Cow Number for row 3. Please fill in the Cow Number for every row and re-upload the file. No records were imported.' },
           { status: 400 }
         )
       )
@@ -262,17 +264,17 @@ describe('UploadPage', () => {
     await user.click(screen.getByRole('button', { name: /milking data/i }));
 
     const input = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
-    const file = new File(['fake-bytes'], 'delpro-export.xlsx', {
+    const file = new File(['fake-bytes'], 'daily-export.xlsx', {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     await user.upload(input, file);
     await user.click(screen.getByRole('button', { name: /upload & import/i }));
 
-    expect(await screen.findByText(/missing the Cow Id for row 3/i)).toBeInTheDocument();
+    expect(await screen.findByText(/missing the Cow Number for row 3/i)).toBeInTheDocument();
     // The file was already uploaded to GCS by the time the import failed -
     // it must not still be shown as "picked", and the retry button for it
     // (which would just re-upload the same already-uploaded file) is gone too.
-    expect(screen.queryByText('delpro-export.xlsx')).not.toBeInTheDocument();
+    expect(screen.queryByText('daily-export.xlsx')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /upload & import/i })).not.toBeInTheDocument();
   });
 
@@ -294,7 +296,7 @@ describe('UploadPage', () => {
         http.post('http://localhost:4000/api/milking-data/import', async () => {
           resolve();
           await new Promise((r) => { releaseImport = r; });
-          return HttpResponse.json({ source: 'DelPro', recordsInserted: 9 });
+          return HttpResponse.json({ recordsInserted: 9 });
         })
       );
     });
@@ -303,7 +305,7 @@ describe('UploadPage', () => {
     await user.click(screen.getByRole('button', { name: /milking data/i }));
 
     const input = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
-    const file = new File(['fake-bytes'], 'delpro-export.xlsx', {
+    const file = new File(['fake-bytes'], 'daily-export.xlsx', {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     await user.upload(input, file);
@@ -314,13 +316,13 @@ describe('UploadPage', () => {
     // picked file is gone, but the drop zone itself is back - just disabled,
     // not removed from the page - while the import job runs.
     await screen.findByText(/reading and storing records/i);
-    expect(screen.queryByText('delpro-export.xlsx')).not.toBeInTheDocument();
+    expect(screen.queryByText('daily-export.xlsx')).not.toBeInTheDocument();
     const dropZoneInput = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });
     expect(dropZoneInput).toBeInTheDocument();
     expect(dropZoneInput).toBeDisabled();
 
     releaseImport();
-    expect(await screen.findByText(/import complete: 9 DelPro records added/i)).toBeInTheDocument();
+    expect(await screen.findByText(/import complete: 9 milking records added/i)).toBeInTheDocument();
 
     // Once the import job finishes, a fresh drop zone is enabled again.
     const reEnabledInput = screen.getByLabelText(/choose milking data file/i, { selector: 'input' });

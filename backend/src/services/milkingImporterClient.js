@@ -18,13 +18,13 @@ async function getAuthHeaders(audience) {
 // Unlike triggerCompression, callers must NOT swallow a failure here - a
 // failed import means zero milking data was written to Mongo, not a merely
 // degraded (thumbnail-less) success, so the error must propagate to the caller.
-async function triggerMilkingImport({ bucketName, objectPath, organizationId, facilityId }) {
+async function triggerMilkingImport({ bucketName, objectPath, milkingDate, facilityId }) {
   if (config.milking.importerUrl) {
     const headers = await getAuthHeaders(config.milking.importerUrl);
     const response = await fetch(config.milking.importerUrl, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bucketName, objectPath, organizationId, facilityId }),
+      body: JSON.stringify({ bucketName, objectPath, milkingDate, facilityId }),
     });
     if (!response.ok) {
       // The Cloud Function replies with { error: <message> } - for a bad
@@ -42,7 +42,7 @@ async function triggerMilkingImport({ bucketName, objectPath, organizationId, fa
 
   // eslint-disable-next-line global-require
   const { importMilkingFile } = require('../../../milking-data-importer/src/importHandler');
-  return importMilkingFile({ bucketName, objectPath, organizationId, facilityId });
+  return importMilkingFile({ bucketName, objectPath, milkingDate, facilityId });
 }
 
 module.exports = { triggerMilkingImport };

@@ -1,4 +1,4 @@
-const mockImportMilkingFile = jest.fn().mockResolvedValue({ source: 'SCR', recordsInserted: 4 });
+const mockImportMilkingFile = jest.fn().mockResolvedValue({ recordsInserted: 4 });
 jest.mock('../../../milking-data-importer/src/importHandler', () => ({
   importMilkingFile: mockImportMilkingFile,
 }));
@@ -21,33 +21,33 @@ describe('milkingImporterClient', () => {
     jest.clearAllMocks();
   });
 
-  it('calls importMilkingFile in-process when no MILKING_IMPORTER_URL is configured, passing organizationId/facilityId through', async () => {
+  it('calls importMilkingFile in-process when no MILKING_IMPORTER_URL is configured, passing bucketName/objectPath/milkingDate/facilityId through', async () => {
     config.milking.importerUrl = null;
     const result = await triggerMilkingImport({
       bucketName: 'b',
-      objectPath: 'org1/fac1/2026-07-22/scr.xlsx',
-      organizationId: 'org1',
+      objectPath: 'org1/fac1/2026-07-22/daily.xlsx',
+      milkingDate: '2026-07-22',
       facilityId: 'fac1',
     });
 
     expect(mockImportMilkingFile).toHaveBeenCalledWith({
       bucketName: 'b',
-      objectPath: 'org1/fac1/2026-07-22/scr.xlsx',
-      organizationId: 'org1',
+      objectPath: 'org1/fac1/2026-07-22/daily.xlsx',
+      milkingDate: '2026-07-22',
       facilityId: 'fac1',
     });
     expect(mockGetIdTokenClient).not.toHaveBeenCalled();
-    expect(result).toEqual({ source: 'SCR', recordsInserted: 4 });
+    expect(result).toEqual({ recordsInserted: 4 });
   });
 
-  it('mints an audienced ID token and POSTs organizationId/facilityId when a URL is configured', async () => {
+  it('mints an audienced ID token and POSTs bucketName/objectPath/milkingDate/facilityId when a URL is configured', async () => {
     config.milking.importerUrl = 'https://bcs-milking-data-importer-xyz.a.run.app';
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ source: 'DelPro', recordsInserted: 9 }) });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ recordsInserted: 9 }) });
 
     const result = await triggerMilkingImport({
       bucketName: 'b',
-      objectPath: 'org1/fac1/2026-07-22/delpro.xlsx',
-      organizationId: 'org1',
+      objectPath: 'org1/fac1/2026-07-22/daily.xlsx',
+      milkingDate: '2026-07-22',
       facilityId: 'fac1',
     });
 
@@ -59,11 +59,11 @@ describe('milkingImporterClient', () => {
     expect(options.headers.authorization).toBe('Bearer fake-id-token');
     expect(JSON.parse(options.body)).toEqual({
       bucketName: 'b',
-      objectPath: 'org1/fac1/2026-07-22/delpro.xlsx',
-      organizationId: 'org1',
+      objectPath: 'org1/fac1/2026-07-22/daily.xlsx',
+      milkingDate: '2026-07-22',
       facilityId: 'fac1',
     });
-    expect(result).toEqual({ source: 'DelPro', recordsInserted: 9 });
+    expect(result).toEqual({ recordsInserted: 9 });
   });
 
   it('surfaces the Cloud Function\'s own error message and status (does not swallow) on a non-2xx response', async () => {

@@ -2,15 +2,15 @@ const functions = require('@google-cloud/functions-framework');
 const { importMilkingFile } = require('./src/importHandler');
 
 functions.http('importMilkingData', async (req, res) => {
-  const { bucketName, objectPath, organizationId, facilityId } = req.body || {};
+  const { bucketName, objectPath, milkingDate, facilityId } = req.body || {};
 
-  if (!bucketName || !objectPath || !organizationId || !facilityId) {
-    res.status(400).json({ error: 'bucketName, objectPath, organizationId and facilityId are required' });
+  if (!bucketName || !objectPath || !milkingDate || !facilityId) {
+    res.status(400).json({ error: 'bucketName, objectPath, milkingDate and facilityId are required' });
     return;
   }
 
   try {
-    const result = await importMilkingFile({ bucketName, objectPath, organizationId, facilityId });
+    const result = await importMilkingFile({ bucketName, objectPath, milkingDate, facilityId });
     res.status(200).json(result);
   } catch (err) {
     console.error(`importMilkingFile failed for ${bucketName}/${objectPath}:`, err);

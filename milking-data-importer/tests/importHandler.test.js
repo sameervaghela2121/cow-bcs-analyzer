@@ -13,8 +13,6 @@ jest.mock('@google-cloud/storage', () => ({
 }));
 
 let mongod;
-const FAKE_ORG_ID = '507f1f77bcf86cd799439011';
-const FAKE_FACILITY_ID = '507f1f77bcf86cd799439012';
 
 // getConnection() only connects once (module-level cache), so point
 // MONGODB_URL at the in-memory server before importHandler is first required.
@@ -37,164 +35,214 @@ afterEach(async () => {
   jest.clearAllMocks();
 });
 
-function buildXlsxBuffer(headerRow, dataRows) {
-  const sheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
+function buildXlsxBuffer(headerRow, dataRows, { includePivotSheet = false } = {}) {
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Sheet1');
+  if (includePivotSheet) {
+    // Mirrors the real-world export: a pivot-table summary sheet named
+    // "Sheet1" precedes the real per-cow data, which must be ignored.
+    const pivotSheet = XLSX.utils.aoa_to_sheet([['Date :- 31.07.2026'], ['Row Labels', 'Sum of Afternoon']]);
+    XLSX.utils.book_append_sheet(workbook, pivotSheet, 'Sheet1');
+  }
+  const sheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Sheet');
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
+const FACILITY_ID = new mongoose.Types.ObjectId();
+
 describe('importMilkingFile', () => {
-  it('parses an SCR sheet, resolves a Cow per row from Cow Id (find-or-create), and inserts one MilkingRecord per real row', async () => {
+  const HEADER_ROW = ['Cow Number', 'Current Group', 'Afternoon', 'Evening', 'Morning', 'Total'];
+
+  it('parses the daily-shift sheet, inserts 3 records per row, and resolves cow/cowGroup refs scoped to facilityId', async () => {
     const { importMilkingFile } = require('../src/importHandler');
     const { getConnection } = require('../src/db');
     const MilkingRecord = require('../src/models/MilkingRecord');
     const Cow = require('../src/models/Cow');
+    const CowGroup = require('../src/models/CowGroup');
 
     // getConnection() is normally only awaited inside importMilkingFile - it
     // must be awaited here too before touching Mongo directly, since this is
     // the first operation in the whole suite to run before that.
     await getConnection();
-    // Cow C2 already exists from a prior import - must be reused, not recreated.
-    const existingCow = await Cow.create({ facility: FAKE_FACILITY_ID, cowsId: 'C2' });
 
-    // 'Cow Id' is deliberately different from 'Cow Number' to prove the
-    // import links cows by Cow Id, not by the sheet's own Cow Number.
-    const headerRow = ['Cow Number', 'Current Group', 'Shift Yield', 'Date', 'Shift', 'Shift Yield -1', 'Shift Yield -2', 'Shift Yield -3', 'Cow Id'];
     const dataRows = [
-      [1, '2.2A', 1.1, '10-07-2026', 'Morning', 2.8, 8.3, '', 'C1'],
-      [2, '2.2A', 9.5, '10-07-2026', 'Morning', 8.2, 6.2, 0, 'C2'],
-      [3, '1.2A', 6.9, '10-07-2026', 'Morning', 4.1, 6, 5.4, 'C3'],
-      [4, '1.3', 4.9, '10-07-2026', 'Morning', 4.7, 3.5, 3.9, 'C4'],
-      [4, '1.3', 3.9, '10-07-2026', 'Evening', 3.2, 2.9, 3.1, 'C4'], // same cow, second shift row
-      [4, '', 22.29, '', '', 19.75, 24.01, '', 'C4'], // totals row - excluded
+      [232, 2.1, 7.86, 0, 6.81, 14.67],
+      [1067, 3.3, 4.3, 7.2, 6.33, 17.83],
     ];
-    savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
+    savedFixtureBuffer = buildXlsxBuffer(HEADER_ROW, dataRows);
 
-    const result = await importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/scr.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID });
+    const result = await importMilkingFile({
+      bucketName: 'test-bucket',
+      objectPath: 'daily.xlsx',
+      milkingDate: '2026-08-12',
+      facilityId: FACILITY_ID,
+    });
 
-    expect(result).toEqual({ source: 'SCR', recordsInserted: 5 });
+    expect(result).toEqual({ recordsInserted: 6 });
     expect(mockBucket).toHaveBeenCalledWith('test-bucket');
-    expect(await MilkingRecord.countDocuments()).toBe(5);
+    expect(await MilkingRecord.countDocuments()).toBe(6);
+    expect(await Cow.countDocuments()).toBe(2);
+    expect(await CowGroup.countDocuments()).toBe(2);
 
-    const record = await MilkingRecord.findOne({ cowNumber: '2' });
-    expect(record.source).toBe('SCR');
-    expect(record.shiftYield1).toBe(8.2);
-    expect(record.sourceObjectPath).toBe('2026-07-22/scr.xlsx');
-    expect(record.organization.toString()).toBe(FAKE_ORG_ID);
-    expect(record.facility.toString()).toBe(FAKE_FACILITY_ID);
-    expect(record.toObject()._cowId).toBeUndefined(); // transient field, never persisted
-    // Cow C2 pre-existed - reused, not duplicated.
-    expect(record.cow.toString()).toBe(existingCow._id.toString());
-    expect(await Cow.countDocuments({ cowsId: 'C2' })).toBe(1);
+    const cow232 = await Cow.findOne({ facility: FACILITY_ID, cowsId: '232' });
+    expect(cow232).not.toBeNull();
+    const group21 = await CowGroup.findOne({ facility: FACILITY_ID, name: '2.1' });
+    expect(group21).not.toBeNull();
 
-    // Cow C4 is new - created once and shared across both of its shift rows.
-    const cowC4 = await Cow.findOne({ cowsId: 'C4' });
-    expect(cowC4).not.toBeNull();
-    const cowC4Records = await MilkingRecord.find({ cowNumber: '4' });
-    expect(cowC4Records).toHaveLength(2);
-    expect(cowC4Records.every((r) => r.cow.toString() === cowC4._id.toString())).toBe(true);
+    // cowNumber isn't stored - cow232 (looked up via Cow.cowsId above) is
+    // now the only way to find this cow's records.
+    const cow232Records = await MilkingRecord.find({ cow: cow232._id }).sort({ milkingShift: 1 });
+    expect(cow232Records).toHaveLength(3);
+    expect(cow232Records.every((r) => String(r.cowGroup) === String(group21._id))).toBe(true);
+
+    const morning232 = cow232Records.find((r) => r.milkingShift === 'Morning');
+    expect(morning232.milk).toBe(6.81);
+    expect(morning232.currentGroup).toBe('2.1');
+    expect(morning232.milkSessionAt.toISOString().slice(0, 10)).toBe('2026-08-12');
+    const evening232 = cow232Records.find((r) => r.milkingShift === 'Evening');
+    expect(evening232.milk).toBe(0);
+    expect(evening232.milkSessionAt.toISOString().slice(0, 10)).toBe('2026-08-11');
+
+    // No cowNumber/organization/facility field lives directly on
+    // MilkingRecord - cowNumber was only ever needed to resolve the `cow`
+    // ref above, and organization/facility are only reachable via
+    // cow.facility/cowGroup.facility, the same way BcsAnalysis reaches it
+    // via its own cow reference.
+    const raw = morning232.toObject();
+    expect(raw.cowNumber).toBeUndefined();
+    expect(raw.organization).toBeUndefined();
+    expect(raw.facility).toBeUndefined();
+    expect(raw.sourceObjectPath).toBeUndefined();
   });
 
-  it('parses a DelPro sheet, resolves a Cow per row from Cow Id, and inserts one MilkingRecord per row', async () => {
+  it('reuses the same Cow/CowGroup on a later import instead of creating duplicates', async () => {
+    const { importMilkingFile } = require('../src/importHandler');
+    const Cow = require('../src/models/Cow');
+    const CowGroup = require('../src/models/CowGroup');
+
+    savedFixtureBuffer = buildXlsxBuffer(HEADER_ROW, [[232, '2.1', 7.86, 0, 6.81, 14.67]]);
+    await importMilkingFile({ bucketName: 'test-bucket', objectPath: 'daily.xlsx', milkingDate: '2026-08-12', facilityId: FACILITY_ID });
+
+    savedFixtureBuffer = buildXlsxBuffer(HEADER_ROW, [[232, '2.1', 7.86, 0, 6.81, 14.67]]);
+    await importMilkingFile({ bucketName: 'test-bucket', objectPath: 'daily2.xlsx', milkingDate: '2026-08-13', facilityId: FACILITY_ID });
+
+    expect(await Cow.countDocuments({ facility: FACILITY_ID, cowsId: '232' })).toBe(1);
+    expect(await CowGroup.countDocuments({ facility: FACILITY_ID, name: '2.1' })).toBe(1);
+  });
+
+  it('preserves group history when a cow moves to a new group - past records keep their original CowGroup ref', async () => {
+    const { importMilkingFile } = require('../src/importHandler');
+    const MilkingRecord = require('../src/models/MilkingRecord');
+    const Cow = require('../src/models/Cow');
+    const CowGroup = require('../src/models/CowGroup');
+
+    savedFixtureBuffer = buildXlsxBuffer(HEADER_ROW, [[232, '2.1', 7.86, 0, 6.81, 14.67]]);
+    await importMilkingFile({ bucketName: 'test-bucket', objectPath: 'daily.xlsx', milkingDate: '2026-08-12', facilityId: FACILITY_ID });
+
+    savedFixtureBuffer = buildXlsxBuffer(HEADER_ROW, [[232, '3.3', 5.0, 1.0, 5.5, 11.5]]);
+    await importMilkingFile({ bucketName: 'test-bucket', objectPath: 'daily2.xlsx', milkingDate: '2026-08-13', facilityId: FACILITY_ID });
+
+    // Still one Cow document - the cow itself didn't change, only which
+    // group it belonged to at each import.
+    const cow = await Cow.findOne({ facility: FACILITY_ID, cowsId: '232' });
+    expect(await Cow.countDocuments({ facility: FACILITY_ID, cowsId: '232' })).toBe(1);
+
+    const oldGroup = await CowGroup.findOne({ facility: FACILITY_ID, name: '2.1' });
+    const newGroup = await CowGroup.findOne({ facility: FACILITY_ID, name: '3.3' });
+    expect(oldGroup._id.toString()).not.toBe(newGroup._id.toString());
+
+    // Records from the first import still point at the old group - moving
+    // the cow to a new group never rewrites past records.
+    expect(await MilkingRecord.countDocuments({ cow: cow._id, cowGroup: oldGroup._id })).toBe(3);
+    expect(await MilkingRecord.countDocuments({ cow: cow._id, cowGroup: newGroup._id })).toBe(3);
+  });
+
+  it('reads the sheet named "Sheet", ignoring a pivot-table summary sheet named "Sheet1"', async () => {
     const { importMilkingFile } = require('../src/importHandler');
     const MilkingRecord = require('../src/models/MilkingRecord');
     const Cow = require('../src/models/Cow');
 
-    const headerRow = ['Animal Number', 'Group Name', 'Yield Yesterday Session 2', 'Yield Yesterday Session 3', 'Yield Today Session 1', 'In Milk', 'Milk Yield Yesterday', 'Cow Id'];
-    const dataRows = [
-      [11, '3.1 B', 9.1, '', '', 'Checked', 9.06, 'D11'],
-      [12, '3.3', 9.5, 4.9, 3.45, 'Checked', 17.67, 'D12'],
-      [13, '3.4', 9.6, 6.8, 5.03, 'Checked', 22.27, 'D13'],
-      [14, '3.3', 9, 6.9, 5.12, 'Checked', 22.52, 'D14'],
-      [15, '3.3', 9.4, 6, 5.36, 'Checked', 22.51, 'D15'],
-      [16, '3.2', 9.1, 11.7, 5.98, 'Checked', 26.89, 'D16'],
-      [17, '3.3', 9.2, 5.6, 6.98, 'Checked', 20.57, 'D17'],
-      [18, '3.2', 9.8, 9.2, 8.09, 'Checked', 27.21, 'D18'],
-      [19, '3.2', 9.8, 8.7, 9.56, 'Checked', 27.07, 'D19'],
-    ];
-    savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
+    const dataRows = [[5, '1.1', 4.3, 7.2, 6.33, 17.83]];
+    savedFixtureBuffer = buildXlsxBuffer(HEADER_ROW, dataRows, { includePivotSheet: true });
 
-    const result = await importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID });
+    const result = await importMilkingFile({
+      bucketName: 'test-bucket',
+      objectPath: 'daily.xlsx',
+      milkingDate: '2026-08-12',
+      facilityId: FACILITY_ID,
+    });
 
-    expect(result).toEqual({ source: 'DelPro', recordsInserted: 9 });
-    expect(await MilkingRecord.countDocuments()).toBe(9);
-
-    const record = await MilkingRecord.findOne({ animalNumber: '12' });
-    expect(record.source).toBe('DelPro');
-    expect(record.milkYieldYesterday).toBe(17.67);
-    expect(record.toObject().inMilk).toBeUndefined();
-
-    const cowD12 = await Cow.findOne({ cowsId: 'D12' });
-    expect(cowD12).not.toBeNull();
-    expect(record.cow.toString()).toBe(cowD12._id.toString());
-    expect(await Cow.countDocuments()).toBe(9);
-    // Animal Number was never used as a cow id.
-    expect(await Cow.countDocuments({ cowsId: '12' })).toBe(0);
+    expect(result).toEqual({ recordsInserted: 3 });
+    const cow5 = await Cow.findOne({ facility: FACILITY_ID, cowsId: '5' });
+    expect(await MilkingRecord.countDocuments({ cow: cow5._id })).toBe(3);
   });
 
-  it('saves nothing and reports a meaningful error when an SCR row is missing its Cow Id', async () => {
+  it('rejects a missing facilityId before touching storage', async () => {
     const { importMilkingFile } = require('../src/importHandler');
-    const MilkingRecord = require('../src/models/MilkingRecord');
-    const Cow = require('../src/models/Cow');
-
-    const headerRow = ['Cow Number', 'Current Group', 'Shift Yield', 'Date', 'Shift', 'Shift Yield -1', 'Shift Yield -2', 'Shift Yield -3', 'Cow Id'];
-    const dataRows = [
-      [1, '2.2A', 1.1, '10-07-2026', 'Morning', 2.8, 8.3, '', 'C1'],
-      [2, '2.2A', 9.5, '10-07-2026', 'Morning', 8.2, 6.2, 0, ''], // missing Cow Id
-      [3, '1.2A', 6.9, '10-07-2026', 'Morning', 4.1, 6, 5.4, 'C3'],
-      [4, '', 22.29, '', '', 19.75, 24.01, '', 'C4'], // totals row - must stay excluded, not misreported
-    ];
-    savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
 
     await expect(
-      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/scr.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID })
-    ).rejects.toThrow(/missing the Cow Id for row 3\./);
+      importMilkingFile({
+        bucketName: 'test-bucket',
+        objectPath: 'daily.xlsx',
+        milkingDate: '2026-08-12',
+      })
+    ).rejects.toThrow(/facilityId is required\./);
 
-    expect(await MilkingRecord.countDocuments()).toBe(0);
-    expect(await Cow.countDocuments()).toBe(0);
+    expect(mockBucket).not.toHaveBeenCalled();
   });
 
-  it('saves nothing and reports a meaningful error when the file has no Cow Id column at all', async () => {
+  it('rejects a missing or malformed milkingDate before touching storage', async () => {
     const { importMilkingFile } = require('../src/importHandler');
-    const MilkingRecord = require('../src/models/MilkingRecord');
-    const Cow = require('../src/models/Cow');
-
-    // No 'Cow Id' column - just the original 7 DelPro columns.
-    const headerRow = ['Animal Number', 'Group Name', 'Yield Yesterday Session 2', 'Yield Yesterday Session 3', 'Yield Today Session 1', 'In Milk', 'Milk Yield Yesterday'];
-    const dataRows = [[12, '3.3', 9.5, 4.9, 3.45, 'Checked', 17.67]];
-    savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
 
     await expect(
-      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID })
-    ).rejects.toThrow(/no "Cow Id" column/);
+      importMilkingFile({
+        bucketName: 'test-bucket',
+        objectPath: 'daily.xlsx',
+        milkingDate: '12-08-2026', // wrong shape
+        facilityId: FACILITY_ID,
+      })
+    ).rejects.toThrow(/milkingDate is required and must be in YYYY-MM-DD format\./);
 
-    expect(await MilkingRecord.countDocuments()).toBe(0);
-    expect(await Cow.countDocuments()).toBe(0);
+    expect(mockBucket).not.toHaveBeenCalled();
   });
 
-  it('reproduces the real-world bug report: a Cow Id column that exists but is blank on every row saves nothing and creates no cows', async () => {
+  it('saves nothing and reports a meaningful error when a row is missing its Cow Number', async () => {
     const { importMilkingFile } = require('../src/importHandler');
     const MilkingRecord = require('../src/models/MilkingRecord');
-    const Cow = require('../src/models/Cow');
 
-    // Matches the actual uploaded file: 'Cow Id' column present, empty on
-    // every row. Previously this silently created Cow documents keyed off
-    // Animal Number instead of rejecting the file.
-    const headerRow = ['Animal Number', 'Group Name', 'Yield Yesterday Session 2', 'Yield Yesterday Session 3', 'Yield Today Session 1', 'In Milk', 'Milk Yield Yesterday', 'Cow Id'];
     const dataRows = [
-      [16, '3.2', 9.1, 11.7, 5.98, 'Checked', 26.89, ''],
-      [17, '3.3', 9.2, 5.6, 6.98, 'Checked', 20.57, ''],
-      [18, '3.2', 9.8, 9.2, 8.09, 'Checked', 27.21, ''],
-      [19, '3.2', 9.8, 8.7, 9.56, 'Checked', 27.07, ''],
+      [5, '1.1', 4.3, 7.2, 6.33, 17.83],
+      ['', '1.2', 0, 1, 2, 3],
     ];
-    savedFixtureBuffer = buildXlsxBuffer(headerRow, dataRows);
+    savedFixtureBuffer = buildXlsxBuffer(HEADER_ROW, dataRows);
 
     await expect(
-      importMilkingFile({ bucketName: 'test-bucket', objectPath: '2026-07-22/delpro.xlsx', organizationId: FAKE_ORG_ID, facilityId: FAKE_FACILITY_ID })
-    ).rejects.toThrow(/missing the Cow Id for rows 2, 3, 4, 5\./);
+      importMilkingFile({
+        bucketName: 'test-bucket',
+        objectPath: 'daily.xlsx',
+        milkingDate: '2026-08-12',
+        facilityId: FACILITY_ID,
+      })
+    ).rejects.toThrow(/missing the Cow Number for row 3\./);
 
     expect(await MilkingRecord.countDocuments()).toBe(0);
-    expect(await Cow.countDocuments()).toBe(0);
+  });
+
+  it('saves nothing and reports a meaningful error when a required column is missing', async () => {
+    const { importMilkingFile } = require('../src/importHandler');
+    const MilkingRecord = require('../src/models/MilkingRecord');
+
+    savedFixtureBuffer = buildXlsxBuffer(['Cow Number', 'Current Group', 'Afternoon'], [[5, '1.1', 4.3]]);
+
+    await expect(
+      importMilkingFile({
+        bucketName: 'test-bucket',
+        objectPath: 'daily.xlsx',
+        milkingDate: '2026-08-12',
+        facilityId: FACILITY_ID,
+      })
+    ).rejects.toThrow(/missing the following column\(s\): Evening, Morning/);
+
+    expect(await MilkingRecord.countDocuments()).toBe(0);
   });
 });

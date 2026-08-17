@@ -14,7 +14,7 @@ const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreads
 
 const MODES = [
   { id: 'bcs', label: 'BCS Photos' },
-  // { id: 'milking', label: 'Milking Data' },
+ { id: 'milking', label: 'Milking Data' }, // 
 ];
 
 const PHASE_LABEL = {
@@ -468,13 +468,21 @@ function BcsUploadSection() {
   );
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function MilkingUploadSection() {
   const fileInputRef = useRef(null);
   const [file, setFile] = useState(null);
+  // The date this file's data is FOR, not the date it's uploaded - defaults
+  // to today since most imports happen the same morning, but the sheet has
+  // no date column of its own so this always has to be entered explicitly.
+  const [milkingDate, setMilkingDate] = useState(todayIsoDate);
   const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState(null); // 'preparing' | 'uploading' | 'importing'
   const [error, setError] = useState(null);
-  const [result, setResult] = useState(null); // { source, recordsInserted }
+  const [result, setResult] = useState(null); // { recordsInserted }
 
   const locked = phase != null;
 
@@ -510,6 +518,7 @@ function MilkingUploadSection() {
 
   function reset() {
     setFile(null);
+    setMilkingDate(todayIsoDate());
     setError(null);
     setResult(null);
     setPhase(null);
@@ -518,6 +527,10 @@ function MilkingUploadSection() {
   async function submit() {
     if (!file) {
       setError('Choose a milking data spreadsheet before uploading.');
+      return;
+    }
+    if (!milkingDate) {
+      setError('Enter the date this data is for before uploading.');
       return;
     }
     setError(null);
@@ -535,7 +548,7 @@ function MilkingUploadSection() {
       setFile(null);
 
       setPhase('importing');
-      const imported = await milkingDataApi.importUpload({ objectPath });
+      const imported = await milkingDataApi.importUpload({ objectPath, milkingDate });
 
       setResult(imported);
       setPhase(null);
@@ -555,7 +568,26 @@ function MilkingUploadSection() {
 
       {result && (
         <div style={{ ...softTint(color.success), fontSize: 13.5, fontWeight: 600, padding: '12px 14px', borderRadius: radius.input, marginBottom: 16 }}>
-          Import complete: {result.recordsInserted} {result.source} record{result.recordsInserted === 1 ? '' : 's'} added.
+          Import complete: {result.recordsInserted} milking record{result.recordsInserted === 1 ? '' : 's'} added.
+        </div>
+      )}
+
+      {!result && (
+        <div style={{ marginBottom: 16 }}>
+          <label htmlFor="milking-date" style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: color.textSecondary, marginBottom: 6 }}>
+            Date this data is for
+          </label>
+          <TextInput
+            id="milking-date"
+            type="date"
+            value={milkingDate}
+            max={todayIsoDate()}
+            disabled={locked}
+            onChange={(e) => setMilkingDate(e.target.value)}
+          />
+          <div style={{ fontSize: 11.5, color: color.textMuted, marginTop: 4 }}>
+            Morning uses this date; Afternoon and Evening use the day before.
+          </div>
         </div>
       )}
 
@@ -648,7 +680,7 @@ export default function UploadPage() {
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '36px 28px 60px' }}>
       <PageHeader
         title="Upload"
-        subtitle={mode === 'bcs' ? 'Upload one or more photos of the same cow.' : 'Upload a milking-parlor export (SCR or DelPro) as a .xlsx file.'}
+        subtitle={mode === 'bcs' ? 'Upload one or more photos of the same cow.' : 'Upload a daily milking export as a .xlsx file.'}
       />
       <ModeToggle mode={mode} setMode={setMode} />
       <Card padding={24}>
