@@ -34,9 +34,13 @@ class OpenAIProvider(LLMProvider):
             )
 
         try:
+            # NOTE: gpt-5.1 uses `max_completion_tokens` (the older `max_tokens`
+            # is rejected), and - like claude-sonnet-5 - it rejects any
+            # non-default `temperature` (only 1, the default, is accepted), so
+            # settings.LLM_TEMPERATURE is not wired in here either.
             response = await self._client.chat.completions.create(
                 model=self._model,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_tokens,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": content},

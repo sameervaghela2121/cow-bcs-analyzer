@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     # --- Which provider to use by default (can be overridden per-request) ---
     DEFAULT_LLM_PROVIDER: str = "gemini"  # "gemini" | "claude" | "openai"
 
+    # --- Generation params shared across providers ---
+    # NOTE: claude-sonnet-5 and gpt-5.1 both reject any non-default temperature
+    # (400 error) - only the model default (1) is accepted, so this is only
+    # wired into gemini_provider.py. See claude_provider.py / openai_provider.py
+    # for details.
+    LLM_TEMPERATURE: float = 0.0
+
     # --- OpenAI ---
     OPENAI_API_KEY: str | None = None
     OPENAI_VISION_MODEL: str = "gpt-4.1"

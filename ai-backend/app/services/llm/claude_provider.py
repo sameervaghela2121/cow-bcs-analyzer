@@ -38,6 +38,10 @@ class ClaudeProvider(LLMProvider):
         content.append({"type": "text", "text": user_instruction})
 
         try:
+            # NOTE: no `temperature` here on purpose - claude-sonnet-5 rejects
+            # any non-default temperature (400 invalid_request_error). Other
+            # providers get settings.LLM_TEMPERATURE; Claude always runs at
+            # its default sampling.
             response = await self._client.messages.create(
                 model=self._model,
                 max_tokens=max_tokens,

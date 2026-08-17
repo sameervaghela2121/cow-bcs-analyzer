@@ -46,6 +46,7 @@ class GeminiProvider(LLMProvider):
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     max_output_tokens=max_tokens,
+                    temperature=settings.LLM_TEMPERATURE,
                     response_mime_type="application/json",
                     response_schema=_RESPONSE_SCHEMA,
                 ),
