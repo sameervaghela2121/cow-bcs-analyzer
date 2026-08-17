@@ -52,10 +52,32 @@ describe('imageCompressorClient', () => {
     expect(JSON.parse(options.body)).toEqual({ bucketName: 'b', objectPath: '3124/ts/a.jpg' });
   });
 
-  it('throws if the deployed function responds with a non-2xx status', async () => {
+  it('throws immediately (no retry) if the deployed function responds with a non-429 non-2xx status', async () => {
     config.imageCompressor.url = 'https://bcs-image-compressor-xyz.a.run.app';
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' });
 
     await expect(triggerCompression({ bucketName: 'b', objectPath: '3124/ts/a.jpg' })).rejects.toThrow(/500/);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a 429 (transient Cloud Run scale-up rejection) and succeeds once the burst clears', async () => {
+    config.imageCompressor.url = 'https://bcs-image-compressor-xyz.a.run.app';
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 429, text: async () => 'Rate exceeded.' })
+      .mockResolvedValueOnce({ ok: false, status: 429, text: async () => 'Rate exceeded.' })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' });
+
+    await triggerCompression({ bucketName: 'b', objectPath: '3124/ts/a.jpg' });
+
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('gives up and throws after repeated 429s rather than retrying forever', async () => {
+    config.imageCompressor.url = 'https://bcs-image-compressor-xyz.a.run.app';
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 429, text: async () => 'Rate exceeded.' });
+
+    await expect(triggerCompression({ bucketName: 'b', objectPath: '3124/ts/a.jpg' })).rejects.toThrow(/429/);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 });

@@ -115,6 +115,30 @@ describe('bcs-analysis upload + create + poll flow', () => {
     expect(triggerCompression).toHaveBeenCalledWith({ bucketName: config.gcs.bucketName, objectPath });
   });
 
+  it('triggers compression for every image in a larger batch, even above the concurrency cap', async () => {
+    const objectPaths = ['a.jpg', 'b.jpg', 'c.jpg', 'd.jpg', 'e.jpg'].map((name) =>
+      imagePath('3124', `2026-07-16T00-00-00-000Z/${name}`)
+    );
+
+    const res = await request(app)
+      .post('/api/bcs-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cowsId: '3124', cowsImages: objectPaths.map((p) => `gs://${config.gcs.bucketName}/${p}`) });
+
+    expect(res.status).toBe(201);
+
+    // Compression now runs in the background (not awaited before the
+    // response is sent - see bcsAnalysisController.js) so the response can
+    // land before every image has actually been dispatched. Flush the event
+    // loop to let the detached batch finish before asserting on it.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(triggerCompression).toHaveBeenCalledTimes(5);
+    objectPaths.forEach((objectPath) => {
+      expect(triggerCompression).toHaveBeenCalledWith({ bucketName: config.gcs.bucketName, objectPath });
+    });
+  });
+
   it('still creates the record and responds 201 even if compression fails', async () => {
     triggerCompression.mockRejectedValueOnce(new Error('sharp blew up'));
 

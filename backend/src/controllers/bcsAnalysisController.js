@@ -19,6 +19,30 @@ const config = require('../config/env');
 const SAFE_ID_OR_FILENAME = /^[A-Za-z0-9._-]{1,128}$/;
 const ALLOWED_IMAGE_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+// The image-compressor function is capped at 5 instances - firing every
+// photo in a batch at it simultaneously (Promise.all with no limit) can
+// burst past what it can scale up to in time and get some of them rejected
+// with 429s. Capping in-flight requests keeps a big batch well under that
+// ceiling regardless of how many photos are uploaded at once.
+const COMPRESSION_CONCURRENCY = 3;
+
+async function compressAllWithLimitedConcurrency(cowsImages) {
+  const queue = [...cowsImages];
+  async function worker() {
+    let uri = queue.shift();
+    while (uri !== undefined) {
+      try {
+        await triggerCompression({ bucketName: config.gcs.bucketName, objectPath: fromGsUri(uri).objectPath });
+      } catch (compressionErr) {
+        console.error(`image-compressor failed for ${uri}:`, compressionErr);
+      }
+      uri = queue.shift();
+    }
+  }
+  const workerCount = Math.min(COMPRESSION_CONCURRENCY, cowsImages.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+}
+
 const SELECTABLE_SOURCES = [...PROVIDERS, 'mean', 'median'];
 
 // The value each of the 5 selectable candidates currently holds - null for
@@ -190,16 +214,17 @@ async function create(req, res, next) {
 
     // Compressed thumbnail/display variants are a display-only optimization -
     // a failure here must never block record creation or AI analysis, which
-    // both continue to work off the original, full-quality image.
-    await Promise.all(
-      cowsImages.map(async (uri) => {
-        try {
-          await triggerCompression({ bucketName: config.gcs.bucketName, objectPath: fromGsUri(uri).objectPath });
-        } catch (compressionErr) {
-          console.error(`image-compressor failed for ${uri}:`, compressionErr);
-        }
-      })
-    );
+    // both continue to work off the original, full-quality image. Not
+    // awaited: the Cloud Run service runs with --no-cpu-throttling, so this
+    // keeps running in the background after the response is sent instead of
+    // making the caller wait through however many compression round-trips
+    // (each its own cold-start-prone function call, now with 429 retries on
+    // top) the batch needs. serializeBcsAnalysis's thumbnailUrls/displayUrls
+    // already tolerate the variants not existing yet (see its comment) - the
+    // frontend falls back to the original image until compression catches up.
+    compressAllWithLimitedConcurrency(cowsImages).catch((err) => {
+      console.error(`image-compressor batch failed unexpectedly for cowsId ${cowsId}:`, err);
+    });
 
     res.status(201).json({ bcsAnalysis: await serializeBcsAnalysis(analysis) });
   } catch (err) {
