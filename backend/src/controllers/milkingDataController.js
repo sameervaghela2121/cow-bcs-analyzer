@@ -154,4 +154,61 @@ async function summary(req, res, next) {
   }
 }
 
-module.exports = { generateUploadUrl, importUpload, summary };
+const MAX_LIMIT = 500;
+const DEFAULT_LIMIT = 50;
+const SORT_FIELDS = { date: 'milkSessionAt', milk: 'milk' };
+
+async function records(req, res, next) {
+  try {
+    const { startDate, endDate, groupId, cowId, shift, sortBy = 'date', sortOrder = 'desc', limit = DEFAULT_LIMIT, offset = 0 } = req.query;
+
+    const match = await buildFacilityScopedMatch({
+      facilityId: req.scope.facilityId,
+      startDate,
+      endDate,
+      cowId,
+      groupId,
+      shift,
+    });
+
+    if (!Object.prototype.hasOwnProperty.call(SORT_FIELDS, sortBy)) {
+      return res.status(400).json({ error: `sortBy must be one of: ${Object.keys(SORT_FIELDS).join(', ')}.` });
+    }
+    if (!['asc', 'desc'].includes(sortOrder)) {
+      return res.status(400).json({ error: "sortOrder must be 'asc' or 'desc'." });
+    }
+    const numericLimit = Math.min(MAX_LIMIT, Math.max(1, Number(limit) || DEFAULT_LIMIT));
+    const numericOffset = Math.max(0, Number(offset) || 0);
+
+    const sortStage = { [SORT_FIELDS[sortBy]]: sortOrder === 'asc' ? 1 : -1 };
+
+    const [total, docs] = await Promise.all([
+      MilkingRecord.countDocuments(match),
+      MilkingRecord.find(match)
+        .sort(sortStage)
+        .skip(numericOffset)
+        .limit(numericLimit)
+        .populate('cow', 'cowsId')
+        .lean(),
+    ]);
+
+    res.json({
+      records: docs.map((doc) => ({
+        id: doc._id.toString(),
+        cowsId: doc.cow?.cowsId ?? null,
+        currentGroup: doc.currentGroup ?? null,
+        shift: doc.milkingShift,
+        milk: doc.milk,
+        milkSessionAt: doc.milkSessionAt,
+        createdAt: doc.createdAt,
+      })),
+      total,
+      limit: numericLimit,
+      offset: numericOffset,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { generateUploadUrl, importUpload, summary, records };

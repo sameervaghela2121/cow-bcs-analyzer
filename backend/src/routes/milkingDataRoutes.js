@@ -8,5 +8,6 @@ const router = express.Router();
 router.post('/upload-url', requireAuth(), requireSession(), resolveScope(), milkingDataController.generateUploadUrl);
 router.post('/import', requireAuth(), requireSession(), resolveScope(), milkingDataController.importUpload);
 router.get('/summary', requireAuth(), requireSession(), resolveScope(), milkingDataController.summary);
+router.get('/records', requireAuth(), requireSession(), resolveScope(), milkingDataController.records);
 
 module.exports = router;
