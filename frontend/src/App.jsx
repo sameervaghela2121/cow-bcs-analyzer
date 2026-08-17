@@ -7,6 +7,7 @@ import FacilitiesPage from './pages/FacilitiesPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import HerdPage from './pages/HerdPage.jsx';
 import CowDetailPage from './pages/CowDetailPage.jsx';
+import MilkingDashboardPage from './pages/MilkingDashboardPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import ReviewPage from './pages/ReviewPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/herd" element={<HerdPage />} />
               <Route path="/herd/:cowsId" element={<CowDetailPage />} />
+              <Route path="/milking" element={<MilkingDashboardPage />} />
               <Route path="/review" element={<ReviewPage />} />
               <Route path="/audit" element={<AuditPage />} />
               <Route path="/audit/:id" element={<AuditDetailPage />} />

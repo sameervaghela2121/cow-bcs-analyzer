@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { BarChart3, Building2, ClipboardCheck, History, LayoutGrid, LogOut, MapPin, Search, Upload, Users } from 'lucide-react';
+import { BarChart3, Building2, ClipboardCheck, Droplet, History, LayoutGrid, LogOut, MapPin, Search, Upload, Users } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useScopedNavigate } from '../auth/useScopedNavigate.js';
 import { THEME } from '../domain/bcs.js';
@@ -11,6 +11,7 @@ import './AppShell.css';
 const APP_CONTENT_NAV_ITEMS = [
   { to: '/upload', label: 'Upload', icon: Upload },
   { to: '/herd', label: 'Herd', icon: LayoutGrid },
+  { to: '/milking', label: 'Milking', icon: Droplet },
   { to: '/review', label: 'Review', icon: ClipboardCheck },
   { to: '/audit', label: 'Audit Log', icon: History },
   { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
