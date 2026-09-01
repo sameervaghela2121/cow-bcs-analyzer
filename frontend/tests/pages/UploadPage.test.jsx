@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
@@ -17,6 +17,11 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+function CowDetailPlaceholder() {
+  const { cowsId } = useParams();
+  return <div>Cow detail page for {cowsId}</div>;
+}
+
 function renderUpload() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -25,7 +30,7 @@ function renderUpload() {
         <AuthProvider>
           <Routes>
             <Route path="/upload" element={<UploadPage />} />
-            <Route path="/herd" element={<div>Herd page</div>} />
+            <Route path="/herd/:cowsId" element={<CowDetailPlaceholder />} />
           </Routes>
         </AuthProvider>
       </MemoryRouter>
@@ -48,7 +53,7 @@ describe('UploadPage', () => {
     expect(screen.getByText(/enter a cow id/i)).toBeInTheDocument();
   });
 
-  it('uploads a batch of photos straight to GCS, creates one analysis record, triggers analysis, and navigates to the herd page', async () => {
+  it('uploads a batch of photos straight to GCS, creates one analysis record, triggers analysis, and navigates to that cow’s detail page', async () => {
     let uploadUrlCalls = 0;
     let putCalls = 0;
     let createCalls = 0;
@@ -99,7 +104,7 @@ describe('UploadPage', () => {
 
     await user.click(screen.getByRole('button', { name: /upload photos/i }));
 
-    await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
+    await waitFor(() => expect(screen.getByText('Cow detail page for 4417')).toBeInTheDocument(), { timeout: 5000 });
 
     expect(uploadUrlCalls).toBe(1);
     expect(putCalls).toBe(2);
@@ -144,12 +149,12 @@ describe('UploadPage', () => {
     await user.upload(input, [fileA, fileB]);
     await user.click(screen.getByRole('button', { name: /upload photos/i }));
 
-    await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
+    await waitFor(() => expect(screen.getByText('Cow detail page for 4417')).toBeInTheDocument(), { timeout: 5000 });
 
     expect(sentFilenames).toEqual(['cow-side-view.jpg', 'cow-side-view-2.jpg']);
   });
 
-  it('still navigates to the herd page even if triggering analysis fails, since the record already exists', async () => {
+  it('still navigates to the cow’s detail page even if triggering analysis fails, since the record already exists', async () => {
     server.use(
       http.post('http://localhost:4000/api/bcs-analysis/upload-urls', async ({ request }) => {
         const body = await request.json();
@@ -181,7 +186,7 @@ describe('UploadPage', () => {
     await user.upload(input, file);
     await user.click(screen.getByRole('button', { name: /upload photos/i }));
 
-    await waitFor(() => expect(screen.getByText(/herd page/i)).toBeInTheDocument(), { timeout: 5000 });
+    await waitFor(() => expect(screen.getByText('Cow detail page for 4417')).toBeInTheDocument(), { timeout: 5000 });
   });
 
   it('rejects a Cow ID with unsafe characters before calling the API', async () => {

@@ -301,10 +301,11 @@ function BcsUploadSection() {
         // best-effort trigger - the detail page is the source of truth from here
       }
 
-      // Land on the herd grid (not this cow's own detail page) so the user
-      // sees its status pill update alongside every other cow, rather than
-      // being dropped into a single-cow view right after uploading.
-      navigate('/herd');
+      // Land on this cow's own detail page - usePollBcsAnalysis there picks
+      // up right where analyzeBcsRecord left off ("processing") and keeps
+      // polling until the score is in, so the user watches their own
+      // upload resolve instead of landing back on the full herd grid.
+      navigate(`/herd/${cowsId}`);
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Upload failed.');
       setSubmitting(false);

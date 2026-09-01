@@ -9,6 +9,10 @@ logger = get_logger(__name__)
 _JSON_FENCE_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 _BARE_JSON_RE = re.compile(r"(\{)", re.DOTALL)
 
+# Keys that identify the outer assessment object, so a nested object (e.g. one
+# entry of the "landmarks" array) is never mistaken for the whole response.
+_RESPONSE_KEYS = ("assessments", "final_bcs")
+
 
 def _extract_balanced_json(text: str, start: int) -> str | None:
     """Extract a balanced JSON object starting at position `start`."""
@@ -21,6 +25,31 @@ def _extract_balanced_json(text: str, start: int) -> str | None:
             if depth == 0:
                 return text[start : i + 1]
     return None
+
+
+def _find_response_object(text: str) -> str | None:
+    """
+    Return the outermost balanced {...} that actually looks like an assessment.
+
+    Scans candidate braces earliest-first so the OUTER object wins: providers
+    using native structured output (Gemini, OpenAI json_mode) return bare JSON
+    whose nested "landmarks" entries would otherwise be picked up instead.
+    Narrative prose before the JSON is skipped because it will not parse.
+    """
+    fallback = None
+    for match in _BARE_JSON_RE.finditer(text):
+        blob = _extract_balanced_json(text, match.start())
+        if blob is None:
+            continue
+        try:
+            parsed = json.loads(blob)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict) and any(k in parsed for k in _RESPONSE_KEYS):
+            return blob
+        if fallback is None:
+            fallback = blob
+    return fallback
 
 
 def extract_json_block(raw_text: str) -> dict:
@@ -38,9 +67,7 @@ def extract_json_block(raw_text: str) -> dict:
         if brace_start != -1:
             candidate = _extract_balanced_json(inner, brace_start)
     else:
-        bare_matches = list(_BARE_JSON_RE.finditer(raw_text))
-        if bare_matches:
-            candidate = _extract_balanced_json(raw_text, bare_matches[-1].start())
+        candidate = _find_response_object(raw_text)
 
     if candidate is None:
         logger.error("No JSON block found in model response. Raw text:\n%s", raw_text[:2000])

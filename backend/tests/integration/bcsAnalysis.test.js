@@ -622,4 +622,123 @@ describe('bcs-analysis upload + create + poll flow', () => {
       createSpy.mockRestore();
     });
   });
+
+  describe('GET /api/bcs-analysis/pending-review', () => {
+    async function makeAnalysis(cowsId, overrides = {}) {
+      const cow = await Cow.create({ facility: facility._id, cowsId });
+      return BcsAnalysis.create({
+        cow: cow._id,
+        organization: organization._id,
+        facility: facility._id,
+        cowsImages: [`gs://${config.gcs.bucketName}/${imagePath(cowsId, '2026-07-16T00-00-00-000Z/a.jpg')}`],
+        status: 'completed',
+        createdBy: user._id,
+        updatedBy: user._id,
+        ...overrides,
+      });
+    }
+
+    it('returns a completed, unapproved analysis regardless of when its cow was registered', async () => {
+      // The bug this endpoint replaced: GET /cows pages by cow.createdAt and
+      // ReviewPage used to filter that page client-side, so a review on a
+      // cow outside the fetched page never appeared no matter its
+      // isApproved value. This asserts the fix directly - an old cow (its
+      // Cow document backdated well outside any realistic single page)
+      // still surfaces here, because the query starts from BcsAnalysis, not
+      // from a paginated Cow list.
+      const oldCow = await Cow.create({ facility: facility._id, cowsId: '1001' });
+      await Cow.updateOne({ _id: oldCow._id }, { createdAt: new Date('2020-01-01') });
+      const analysis = await BcsAnalysis.create({
+        cow: oldCow._id,
+        organization: organization._id,
+        facility: facility._id,
+        cowsImages: [`gs://${config.gcs.bucketName}/${imagePath('1001', '2026-07-16T00-00-00-000Z/a.jpg')}`],
+        status: 'completed',
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .get('/api/bcs-analysis/pending-review')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(1);
+      expect(res.body.bcsAnalyses).toHaveLength(1);
+      expect(res.body.bcsAnalyses[0].id).toBe(analysis._id.toString());
+      expect(res.body.bcsAnalyses[0].cowsId).toBe('1001');
+    });
+
+    it('excludes analyses that are not completed', async () => {
+      await makeAnalysis('3124', { status: 'processing' });
+      const res = await request(app)
+        .get('/api/bcs-analysis/pending-review')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.body.bcsAnalyses).toHaveLength(0);
+    });
+
+    it('excludes analyses that are already approved', async () => {
+      await makeAnalysis('3124', { isApproved: true, finalBcs: 3.25 });
+      const res = await request(app)
+        .get('/api/bcs-analysis/pending-review')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.body.bcsAnalyses).toHaveLength(0);
+    });
+
+    it('excludes analyses belonging to a different facility', async () => {
+      const other = await createOrgAndFacility();
+      const otherCow = await Cow.create({ facility: other.facility._id, cowsId: '5555' });
+      await BcsAnalysis.create({
+        cow: otherCow._id,
+        organization: other.organization._id,
+        facility: other.facility._id,
+        cowsImages: [`gs://${config.gcs.bucketName}/x/y/5555/ts/a.jpg`],
+        status: 'completed',
+        createdBy: user._id,
+        updatedBy: user._id,
+      });
+
+      const res = await request(app)
+        .get('/api/bcs-analysis/pending-review')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.body.bcsAnalyses).toHaveLength(0);
+    });
+
+    it('orders results most-recently-analyzed first', async () => {
+      const first = await makeAnalysis('3001');
+      await new Promise((r) => setTimeout(r, 5));
+      const second = await makeAnalysis('3002');
+
+      const res = await request(app)
+        .get('/api/bcs-analysis/pending-review')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.body.bcsAnalyses.map((a) => a.id)).toEqual([second._id.toString(), first._id.toString()]);
+    });
+
+    it('drops off the pending-review list once selected or overridden', async () => {
+      const analysis = await makeAnalysis('3124', {
+        bcsScore: {
+          claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+          gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
+          openai: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+          isMeanAccurate: null,
+          isMedianAccurate: null,
+          isCritical: false,
+        },
+      });
+
+      await request(app)
+        .patch(`/api/bcs-analysis/${analysis._id}/select`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ source: 'claude' });
+
+      const res = await request(app)
+        .get('/api/bcs-analysis/pending-review')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.body.bcsAnalyses).toHaveLength(0);
+    });
+  });
 });

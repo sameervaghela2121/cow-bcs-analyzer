@@ -182,4 +182,22 @@ describe('HerdPage', () => {
     await userEvent.type(screen.getByPlaceholderText(/search cow id/i), '44');
     await waitFor(() => expect(lastSearch).toBe('44'));
   });
+
+  it('debounces search typing into one request instead of one per keystroke', async () => {
+    const searchesSeen = [];
+    server.use(
+      http.get('http://localhost:4000/api/cows', ({ request }) => {
+        searchesSeen.push(new URL(request.url).searchParams.get('search'));
+        return HttpResponse.json({ cows: [], total: 0 });
+      })
+    );
+    renderHerd();
+    await waitFor(() => expect(searchesSeen).toEqual([null])); // initial mount fetch
+
+    // Typing "4417" one keystroke at a time should not fire a request per
+    // character (search/searchParams=4, then 44, then 441, then 4417) -
+    // only the final, settled value should ever reach the API.
+    await userEvent.type(screen.getByPlaceholderText(/search cow id/i), '4417');
+    await waitFor(() => expect(searchesSeen).toEqual([null, '4417']));
+  });
 });

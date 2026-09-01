@@ -46,7 +46,9 @@ ai-backend/
 │   │   ├── loader.py                   #   cached file loader
 │   │   └── bcs/
 │   │       ├── bcs_system_prompt.md     #   the exact expert BCS prompt, verbatim
-│   │       └── bcs_json_addendum.md     #   reusable "also emit this JSON schema" wrapper
+│   │       ├── bcs_json_addendum.md     #   reusable "also emit this JSON schema" wrapper
+│   │       ├── bcs_anatomical_system_prompt.md   #   alt: 8-landmark binning prompt
+│   │       └── bcs_anatomical_json_addendum.md   #   alt: wrapper carrying per-landmark bins
 │   │
 │   ├── utils/                        # small stateless helpers
 │   │   ├── image_utils.py              #   multipart blob validation (type/size)

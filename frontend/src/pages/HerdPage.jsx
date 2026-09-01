@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useScopedNavigate } from '../auth/useScopedNavigate.js';
@@ -79,6 +79,7 @@ export default function HerdPage() {
   const navigate = useScopedNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // Page lives in the URL (?page=2) rather than component state, so
   // following a cow into its detail page and hitting "back" lands you on
@@ -99,9 +100,18 @@ export default function HerdPage() {
     goToPage(1); // a new search term invalidates whatever page we were on
   }
 
+  // Same 300ms debounce as UploadPage's cow-ID search: typing itself stays
+  // instant (search updates every keystroke, so the input never lags), but
+  // debouncedSearch - the thing actually driving the query - only catches
+  // up once typing pauses, instead of firing a request per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['cows', { search, page }],
-    queryFn: () => cowsApi.list({ search: search || undefined, page, limit: PAGE_SIZE }),
+    queryKey: ['cows', { search: debouncedSearch, page }],
+    queryFn: () => cowsApi.list({ search: debouncedSearch || undefined, page, limit: PAGE_SIZE }),
     // Keep the grid's status pills current while anything is still
     // processing, same 10s cadence as the cow detail page; stop polling
     // once every cow's latest analysis has settled.

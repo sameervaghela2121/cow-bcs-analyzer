@@ -21,7 +21,7 @@ async def _run_single_provider(
         system_prompt=system_prompt,
         user_instruction=user_instruction,
         images=images,
-        max_tokens=4096,
+        max_tokens=12000,
     )
     parsed = extract_json_block(raw_text)
     logger.info("Provider '%s' parsed JSON: %s", provider.name, parsed)
@@ -53,8 +53,25 @@ async def assess_bcs(
 
     names = provider_names or get_all_provider_names()
 
-    system_prompt = load_prompt("bcs/bcs_system_prompt.md")
-    json_addendum = load_prompt("bcs/bcs_json_addendum.md")
+    # ------------------------------------------------------------------
+    # PROMPT SELECTION — keep exactly ONE of the two pairs below active.
+    #
+    #   ORIGINAL   : holistic scoring. The model reads the animal and states a
+    #                score directly. Unchanged, pre-landmark behaviour.
+    #   ANATOMICAL : the model locates 8 anatomical landmarks, rates each into
+    #                a discrete bin, and computes the weighted average itself.
+    #
+    # To switch, comment out the active pair and uncomment the other.
+    # Nothing else needs changing — the response parser accepts both shapes.
+    # ------------------------------------------------------------------
+
+    # --- ORIGINAL (holistic) ---
+    # system_prompt = load_prompt("bcs/bcs_system_prompt.md")
+    # json_addendum = load_prompt("bcs/bcs_json_addendum.md")
+
+    # --- ANATOMICAL (landmark binning) ---
+    system_prompt = load_prompt("bcs/bcs_anatomical_system_prompt.md")
+    json_addendum = load_prompt("bcs/bcs_anatomical_json_addendum.md")
     base_instruction = (
         "Assess the body condition score of the animal(s) shown in these images "
         "using your standard methodology."
