@@ -276,6 +276,34 @@ async function dashboardSummary(req, res, next) {
   }
 }
 
+// Reviewer worklist for ReviewPage: every completed analysis in the facility
+// that hasn't been approved yet, most recently analyzed first. Queries
+// BcsAnalysis directly (using the {facility,status,createdAt} index on the
+// model) instead of paging through the herd's Cow list and filtering
+// client-side by cow.latestAnalysisIsApproved - that approach only ever
+// looked at the newest page of *registered* cows, so a pending review on any
+// cow outside that page was silently invisible regardless of its approval
+// state. Reuses serializeBcsAnalysis, so a row here has everything
+// ReviewPage needs (images, per-provider scores, cowsId) with no follow-up
+// per-row request.
+async function pendingReview(req, res, next) {
+  try {
+    const { page = 1, limit = 200 } = req.query;
+    const query = { facility: req.scope.facilityId, status: 'completed', isApproved: false };
+    const [total, docs] = await Promise.all([
+      BcsAnalysis.countDocuments(query),
+      BcsAnalysis.find(query)
+        .populate('cow')
+        .sort({ createdAt: -1 })
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit)),
+    ]);
+    res.json({ bcsAnalyses: await Promise.all(docs.map(serializeBcsAnalysis)), total });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // Reviewer clicks exactly one of the 5 candidates (3 providers + computed
 // mean + computed median). Every candidate whose value exactly matches that
 // pick is marked isTrue too - so picking Median, which happens to equal
@@ -379,4 +407,4 @@ async function override(req, res, next) {
   }
 }
 
-module.exports = { generateUploadUrls, create, getOne, selectScore, override, serializeBcsAnalysis, dashboardSummary };
+module.exports = { generateUploadUrls, create, getOne, selectScore, override, serializeBcsAnalysis, dashboardSummary, pendingReview };
