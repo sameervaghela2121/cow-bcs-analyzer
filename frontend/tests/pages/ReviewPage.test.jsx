@@ -39,6 +39,7 @@ function renderReview() {
 function makeAnalysis(overrides = {}) {
   return {
     id: 'a1',
+    cowsId: '4417',
     createdAt: '2026-07-10T00:00:00Z',
     status: 'completed',
     isApproved: false,
@@ -58,99 +59,73 @@ function makeAnalysis(overrides = {}) {
   };
 }
 
-// Mutates the same cows/analysesByCow objects on select/override, so a
-// refetch after the mutation (query invalidation) reflects what was
-// persisted - same as hitting the real backend, including the cow-level
-// latestAnalysisIsApproved flag that ReviewPage filters the list on. Both
-// actions set isApproved on the analysis (each is itself a final review
-// decision), so both mutate the matching cow too.
-function findAnalysis(analysesByCow, id) {
-  for (const analyses of Object.values(analysesByCow)) {
-    const match = analyses.find((a) => a.id === id);
-    if (match) return match;
-  }
-  return null;
-}
-
-function markApproved(cows, analysesByCow, match) {
-  match.isApproved = true;
-  const [cowsId] = Object.entries(analysesByCow).find(([, analyses]) => analyses.includes(match)) || [];
-  const cow = cows.find((c) => c.cowsId === cowsId);
-  if (cow) cow.latestAnalysisIsApproved = true;
-}
-
-function mockCowsAndAnalyses({ cows, analysesByCow, onOverride, onSelect }) {
-  server.use(
-    http.get('http://localhost:4000/api/cows', () => HttpResponse.json({ cows, total: cows.length })),
-    http.get('http://localhost:4000/api/cows/:cowsId/analyses', ({ params }) =>
-      HttpResponse.json({ bcsAnalyses: analysesByCow[params.cowsId] || [], total: (analysesByCow[params.cowsId] || []).length })
-    ),
-    http.patch('http://localhost:4000/api/bcs-analysis/:id/select', async ({ params, request }) => {
-      const match = findAnalysis(analysesByCow, params.id);
-      if (!match) return new HttpResponse(null, { status: 404 });
-      const body = await request.json();
-      onSelect?.(body);
-      match.finalBcs = candidateValueForTest(match, body.source);
-      markApproved(cows, analysesByCow, match);
-      return HttpResponse.json({ bcsAnalysis: match });
-    }),
-    http.patch('http://localhost:4000/api/bcs-analysis/:id/override', async ({ params, request }) => {
-      const match = findAnalysis(analysesByCow, params.id);
-      if (!match) return new HttpResponse(null, { status: 404 });
-      const body = await request.json();
-      onOverride?.(body);
-      match.finalBcs = body.score;
-      markApproved(cows, analysesByCow, match);
-      return HttpResponse.json({ bcsAnalysis: match });
-    })
-  );
-}
-
 function candidateValueForTest(analysis, source) {
   if (source === 'mean') return analysis.meanScore;
   if (source === 'median') return analysis.medianScore;
   return analysis.bcsScore?.[source]?.finalBcs ?? null;
 }
 
+// GET /pending-review filters status==='completed' && !isApproved server-side
+// (see bcsAnalysisController.pendingReview) - the mock reproduces that
+// filtering rather than trusting the frontend to do it, so these tests catch
+// a regression to the old "fetch everything, filter client-side" bug the
+// same way the real backend would: an analysis this mock wouldn't return is
+// an analysis ReviewPage never even learns about.
+function mockPendingReview(analyses, { onSelect, onOverride, onListFetch } = {}) {
+  server.use(
+    http.get('http://localhost:4000/api/bcs-analysis/pending-review', () => {
+      onListFetch?.();
+      const pending = analyses.filter((a) => a.status === 'completed' && !a.isApproved);
+      return HttpResponse.json({ bcsAnalyses: pending, total: pending.length });
+    }),
+    http.patch('http://localhost:4000/api/bcs-analysis/:id/select', async ({ params, request }) => {
+      const match = analyses.find((a) => a.id === params.id);
+      if (!match) return new HttpResponse(null, { status: 404 });
+      const body = await request.json();
+      onSelect?.(body);
+      match.finalBcs = candidateValueForTest(match, body.source);
+      match.isApproved = true;
+      return HttpResponse.json({ bcsAnalysis: match });
+    }),
+    http.patch('http://localhost:4000/api/bcs-analysis/:id/override', async ({ params, request }) => {
+      const match = analyses.find((a) => a.id === params.id);
+      if (!match) return new HttpResponse(null, { status: 404 });
+      const body = await request.json();
+      onOverride?.(body);
+      match.finalBcs = body.score;
+      match.isApproved = true;
+      return HttpResponse.json({ bcsAnalysis: match });
+    })
+  );
+}
+
 describe('ReviewPage', () => {
-  it('shows the empty state when no cow has a completed analysis', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'processing', latestAnalysisIsApproved: false }],
-      analysesByCow: {},
-    });
+  it('shows the empty state when no analysis is completed', async () => {
+    mockPendingReview([makeAnalysis({ status: 'processing' })]);
     renderReview();
     await waitFor(() => expect(screen.getByText(/nothing waiting for review/i)).toBeInTheDocument());
   });
 
-  it('shows only cows whose latest analysis is completed and not yet approved, previewing the median as the badge', async () => {
-    mockCowsAndAnalyses({
-      cows: [
-        { id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false },
-        { id: 'c2', cowsId: '5001', latestAnalysisStatus: 'processing', latestAnalysisIsApproved: false },
-      ],
-      analysesByCow: { 4417: [makeAnalysis()] },
-    });
+  it('shows only analyses that are completed and not yet approved, previewing the median as the badge', async () => {
+    mockPendingReview([
+      makeAnalysis({ id: 'a1', cowsId: '4417' }),
+      makeAnalysis({ id: 'a2', cowsId: '5001', status: 'processing' }),
+    ]);
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
     expect(screen.queryByText('Cow 5001')).not.toBeInTheDocument();
     expect(screen.getByText('3.25')).toBeInTheDocument();
   });
 
-  it('does not show a cow whose latest analysis has already been approved', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: true }],
-      analysesByCow: { 4417: [makeAnalysis({ isApproved: true, finalBcs: 3.25 })] },
-    });
+  it('does not show an analysis that has already been approved', async () => {
+    mockPendingReview([makeAnalysis({ isApproved: true, finalBcs: 3.25 })]);
     renderReview();
     await waitFor(() => expect(screen.getByText(/nothing waiting for review/i)).toBeInTheDocument());
     expect(screen.queryByText('Cow 4417')).not.toBeInTheDocument();
   });
 
   it('shows a chip for every candidate - each provider plus the live-computed mean and median', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-    });
+    mockPendingReview([makeAnalysis()]);
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Claude: 3.25' })).toBeInTheDocument();
@@ -165,19 +140,16 @@ describe('ReviewPage', () => {
   });
 
   it('disables the chip for a provider with no successful score', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: {
-        4417: [makeAnalysis({
-          bcsScore: {
-            claude: { finalBcs: 3.25, confidence: 'High', status: 'success', isTrue: null },
-            gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
-            openai: { finalBcs: null, confidence: null, status: 'error', isTrue: null },
-            isMeanAccurate: null, isMedianAccurate: null, isCritical: false,
-          },
-        })],
-      },
-    });
+    mockPendingReview([
+      makeAnalysis({
+        bcsScore: {
+          claude: { finalBcs: 3.25, confidence: 'High', status: 'success', isTrue: null },
+          gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
+          openai: { finalBcs: null, confidence: null, status: 'error', isTrue: null },
+          isMeanAccurate: null, isMedianAccurate: null, isCritical: false,
+        },
+      }),
+    ]);
     renderReview();
     await waitFor(() => expect(screen.getByText('OpenAI: No score')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'OpenAI: No score' })).toBeDisabled();
@@ -186,21 +158,18 @@ describe('ReviewPage', () => {
   it('clicking one candidate highlights every other candidate sharing its exact value', async () => {
     // claude=3.0, gemini=3.5, openai=3.0 -> mean=3.25, median=3.0 (middle of
     // [3.0, 3.0, 3.5]) - claude, openai, and median all coincide at 3.0.
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: {
-        4417: [makeAnalysis({
-          meanScore: 3.25,
-          medianScore: 3.0,
-          bcsScore: {
-            claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
-            gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
-            openai: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
-            isMeanAccurate: null, isMedianAccurate: null, isCritical: false,
-          },
-        })],
-      },
-    });
+    mockPendingReview([
+      makeAnalysis({
+        meanScore: 3.25,
+        medianScore: 3.0,
+        bcsScore: {
+          claude: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+          gemini: { finalBcs: 3.5, confidence: 'Medium', status: 'success', isTrue: null },
+          openai: { finalBcs: 3.0, confidence: 'High', status: 'success', isTrue: null },
+          isMeanAccurate: null, isMedianAccurate: null, isCritical: false,
+        },
+      }),
+    ]);
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
 
@@ -217,10 +186,7 @@ describe('ReviewPage', () => {
   });
 
   it('clicking an already-selected candidate again deselects it, reverting the preview to the median', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-    });
+    mockPendingReview([makeAnalysis()]);
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
 
@@ -236,11 +202,7 @@ describe('ReviewPage', () => {
 
   it('Save is disabled until a candidate is picked, then calls PATCH /select with the clicked source', async () => {
     let selectBody;
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-      onSelect: (body) => { selectBody = body; },
-    });
+    mockPendingReview([makeAnalysis()], { onSelect: (body) => { selectBody = body; } });
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
 
@@ -254,11 +216,28 @@ describe('ReviewPage', () => {
     await waitFor(() => expect(screen.queryByText('Cow 4417')).not.toBeInTheDocument());
   });
 
+  it('removes a saved row from the cache immediately, without refetching the list', async () => {
+    // Regression test for the "row stays for a second, then vanishes" glitch:
+    // the old code called invalidateQueries on success, which marks the list
+    // stale and refetches it - the row only disappeared once that second
+    // request resolved. ReviewPage now updates the cached list directly from
+    // the mutation's own response, so GET /pending-review must fire exactly
+    // once (the initial page load) even after a successful Save.
+    let listFetchCount = 0;
+    mockPendingReview([makeAnalysis()], { onListFetch: () => { listFetchCount += 1; } });
+    renderReview();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+    expect(listFetchCount).toBe(1);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Claude: 3.25' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Save/ }));
+
+    await waitFor(() => expect(screen.queryByText('Cow 4417')).not.toBeInTheDocument());
+    expect(listFetchCount).toBe(1);
+  });
+
   it('shows an error toast when Save fails, and leaves the row in place', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-    });
+    mockPendingReview([makeAnalysis()]);
     server.use(
       http.patch('http://localhost:4000/api/bcs-analysis/a1/select', () => new HttpResponse(null, { status: 500 }))
     );
@@ -278,11 +257,7 @@ describe('ReviewPage', () => {
 
   it('overriding opens a stepper prefilled with the median preview, then calls PATCH /override', async () => {
     let overrideBody;
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-      onOverride: (body) => { overrideBody = body; },
-    });
+    mockPendingReview([makeAnalysis()], { onOverride: (body) => { overrideBody = body; } });
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
 
@@ -303,10 +278,7 @@ describe('ReviewPage', () => {
   });
 
   it('pressing Override deselects any previously-checked candidate chips, since overriding means agreeing with none of them', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-    });
+    mockPendingReview([makeAnalysis()]);
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
 
@@ -326,11 +298,7 @@ describe('ReviewPage', () => {
 
   it('canceling an override discards it without calling PATCH /override', async () => {
     let overrideBody;
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-      onOverride: (body) => { overrideBody = body; },
-    });
+    mockPendingReview([makeAnalysis()], { onOverride: (body) => { overrideBody = body; } });
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
 
@@ -343,10 +311,7 @@ describe('ReviewPage', () => {
   });
 
   it('shows an error toast when overriding fails', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-    });
+    mockPendingReview([makeAnalysis()]);
     server.use(
       http.patch('http://localhost:4000/api/bcs-analysis/a1/override', () => new HttpResponse(null, { status: 500 }))
     );
@@ -360,14 +325,50 @@ describe('ReviewPage', () => {
     expect(screen.getByText('Cow 4417')).toBeInTheDocument();
   });
 
+  it('loads the compressed thumbnail for the row tile, not the full original', async () => {
+    // Regression test: the row tile is 58x58px, same as HerdPage's cover
+    // photo - it should request thumbnailUrls (the 300x300 compressed
+    // variant), not imageUrls (the full original), the same way
+    // HerdPage/CowDetailPage already do for their own image tiles.
+    mockPendingReview([
+      makeAnalysis({ thumbnailUrls: ['https://example.com/a1-thumb.jpg'] }),
+    ]);
+    renderReview();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+    const img = screen.getByAltText('');
+    expect(img).toHaveAttribute('src', 'https://example.com/a1-thumb.jpg');
+  });
+
+  it('falls back to the full original image if the thumbnail variant fails to load', async () => {
+    mockPendingReview([
+      makeAnalysis({ thumbnailUrls: ['https://example.com/a1-thumb.jpg'] }),
+    ]);
+    renderReview();
+    await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
+    const img = screen.getByAltText('');
+    img.dispatchEvent(new Event('error'));
+    await waitFor(() => expect(img).toHaveAttribute('src', 'https://example.com/a1.jpg'));
+  });
+
   it('navigates to the cow detail page when a row is clicked', async () => {
-    mockCowsAndAnalyses({
-      cows: [{ id: 'c1', cowsId: '4417', latestAnalysisStatus: 'completed', latestAnalysisIsApproved: false }],
-      analysesByCow: { 4417: [makeAnalysis()] },
-    });
+    mockPendingReview([makeAnalysis()]);
     renderReview();
     await waitFor(() => expect(screen.getByText('Cow 4417')).toBeInTheDocument());
     await userEvent.click(screen.getByText('Cow 4417'));
     expect(await screen.findByText(/cow detail page/i)).toBeInTheDocument();
+  });
+
+  it('surfaces a review whose cow was registered long before the herd list would ever page to it', async () => {
+    // Regression test for the bug this endpoint replaced: the old ReviewPage
+    // fetched GET /cows (paginated by cow.createdAt, newest first) and
+    // filtered client-side, so a pending review on an old cow outside that
+    // page never appeared no matter its isApproved value. pending-review
+    // queries BcsAnalysis directly, so an old cow's pending review shows up
+    // exactly like a new one's - there is no page to fall outside of.
+    mockPendingReview([
+      makeAnalysis({ id: 'old1', cowsId: '1001', createdAt: '2020-01-01T00:00:00Z' }),
+    ]);
+    renderReview();
+    await waitFor(() => expect(screen.getByText('Cow 1001')).toBeInTheDocument());
   });
 });

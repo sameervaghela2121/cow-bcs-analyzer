@@ -23,6 +23,11 @@ export const bcsAnalysisApi = {
   // Powers the Dashboard's charts/stats in one facility-wide query - no
   // images, no per-cow fan-out. See useDashboardData.js.
   dashboardSummary: () => apiClient.get('/bcs-analysis/dashboard-summary').then((r) => r.data),
+
+  // Powers ReviewPage: every completed, not-yet-approved analysis in the
+  // facility, queried directly instead of paging through the herd list and
+  // filtering client-side (see ReviewPage.jsx for why that was wrong).
+  pendingReview: (params = {}) => apiClient.get('/bcs-analysis/pending-review', { params }).then((r) => r.data),
 };
 
 // Uploads go straight to GCS via a signed URL, never through the Node
