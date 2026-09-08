@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # for details.
     LLM_TEMPERATURE: float = 0.0
 
+    # --- Cost logging ---
+    # USD->INR rate used to log each provider's per-request cost in rupees
+    # (see app/core/pricing.py). Override in .env as the real rate drifts -
+    # this is only for cost visibility in logs, not billing.
+    USD_TO_INR_RATE: float = 94.5
+
     # --- OpenAI ---
     OPENAI_API_KEY: str | None = None
     OPENAI_VISION_MODEL: str = "gpt-4.1"

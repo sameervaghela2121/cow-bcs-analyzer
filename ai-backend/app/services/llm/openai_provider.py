@@ -4,7 +4,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.core.exceptions import extract_error_message, LLMProviderError
-from app.services.llm.base import ImagePayload, LLMProvider
+from app.services.llm.base import ImagePayload, LLMProvider, LLMResult, LLMUsage
 
 
 class OpenAIProvider(LLMProvider):
@@ -14,7 +14,7 @@ class OpenAIProvider(LLMProvider):
         if not settings.OPENAI_API_KEY:
             raise LLMProviderError("OPENAI_API_KEY is not configured.")
         self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self._model = settings.OPENAI_VISION_MODEL
+        self.model = settings.OPENAI_VISION_MODEL
 
     async def analyze_images(
         self,
@@ -22,7 +22,7 @@ class OpenAIProvider(LLMProvider):
         user_instruction: str,
         images: list[ImagePayload],
         max_tokens: int = 2000,
-    ) -> str:
+    ) -> LLMResult:
         content: list[dict] = [{"type": "text", "text": user_instruction}]
         for img in images:
             b64 = base64.b64encode(img.bytes_data).decode("utf-8")
@@ -39,7 +39,7 @@ class OpenAIProvider(LLMProvider):
             # non-default `temperature` (only 1, the default, is accepted), so
             # settings.LLM_TEMPERATURE is not wired in here either.
             response = await self._client.chat.completions.create(
-                model=self._model,
+                model=self.model,
                 max_completion_tokens=max_tokens,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -52,4 +52,8 @@ class OpenAIProvider(LLMProvider):
         message = response.choices[0].message.content if response.choices else None
         if not message:
             raise LLMProviderError("OpenAI returned no text content.")
-        return message
+        usage = LLMUsage(
+            input_tokens=response.usage.prompt_tokens if response.usage else None,
+            output_tokens=response.usage.completion_tokens if response.usage else None,
+        )
+        return LLMResult(text=message, usage=usage)

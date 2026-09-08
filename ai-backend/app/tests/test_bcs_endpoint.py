@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.llm.base import LLMResult, LLMUsage
 
 client = TestClient(app)
 
@@ -56,6 +57,13 @@ FINAL BCS: {score:.2f} / 5 (Confidence: High)
 """
 
 
+def fake_llm_result(text: str, input_tokens: int = 1000, output_tokens: int = 200) -> LLMResult:
+    """Wraps raw provider text in the LLMResult analyze_images() now returns,
+    with made-up but present token usage so cost logging has something to
+    compute from during these tests."""
+    return LLMResult(text=text, usage=LLMUsage(input_tokens=input_tokens, output_tokens=output_tokens))
+
+
 @pytest.mark.asyncio
 async def test_assess_bcs_fans_out_to_all_providers():
     fake_bytes = b"fake-image-bytes"
@@ -68,11 +76,11 @@ async def test_assess_bcs_fans_out_to_all_providers():
     with (
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
-            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+            new=AsyncMock(return_value=fake_llm_result(FAKE_MODEL_JSON_REPLY)),
         ),
         patch(
             "app.services.llm.claude_provider.ClaudeProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(3.5)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(3.5))),
         ),
         patch(
             "app.services.llm.openai_provider.OpenAIProvider.analyze_images",
@@ -114,7 +122,7 @@ async def test_assess_bcs_can_be_narrowed_to_a_subset():
     with (
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
-            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+            new=AsyncMock(return_value=fake_llm_result(FAKE_MODEL_JSON_REPLY)),
         ),
     ):
         response = client.post("/api/bcs/assess?providers=gemini", files=files)
@@ -142,15 +150,15 @@ async def test_is_critical_false_when_all_three_agree_closely():
     with (
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(3.0)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(3.0))),
         ),
         patch(
             "app.services.llm.claude_provider.ClaudeProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(3.25)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(3.25))),
         ),
         patch(
             "app.services.llm.openai_provider.OpenAIProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(3.0)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(3.0))),
         ),
     ):
         response = client.post("/api/bcs/assess", files=files)
@@ -173,15 +181,15 @@ async def test_is_critical_true_when_providers_disagree_by_more_than_half_a_poin
     with (
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(1.0)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(1.0))),
         ),
         patch(
             "app.services.llm.claude_provider.ClaudeProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(1.25)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(1.25))),
         ),
         patch(
             "app.services.llm.openai_provider.OpenAIProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(5.0)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(5.0))),
         ),
     ):
         response = client.post("/api/bcs/assess", files=files)
@@ -204,11 +212,11 @@ async def test_is_critical_true_at_the_tightest_possible_threshold_crossing():
     with (
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(3.0)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(3.0))),
         ),
         patch(
             "app.services.llm.claude_provider.ClaudeProvider.analyze_images",
-            new=AsyncMock(return_value=fake_reply_with_score(3.75)),
+            new=AsyncMock(return_value=fake_llm_result(fake_reply_with_score(3.75))),
         ),
         patch(
             "app.services.llm.openai_provider.OpenAIProvider.analyze_images",
@@ -240,7 +248,7 @@ async def test_assess_bcs_skips_one_invalid_image_but_still_scores_the_rest():
         patch("app.utils.image_utils.settings.MAX_IMAGE_SIZE_MB", 1),
         patch(
             "app.services.llm.gemini_provider.GeminiProvider.analyze_images",
-            new=AsyncMock(return_value=FAKE_MODEL_JSON_REPLY),
+            new=AsyncMock(return_value=fake_llm_result(FAKE_MODEL_JSON_REPLY)),
         ) as gemini_mock,
     ):
         response = client.post("/api/bcs/assess?providers=gemini", files=files)

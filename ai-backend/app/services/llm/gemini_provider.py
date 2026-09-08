@@ -3,7 +3,7 @@ from google.genai import types
 
 from app.core.config import settings
 from app.core.exceptions import extract_error_message, LLMProviderError
-from app.services.llm.base import ImagePayload, LLMProvider
+from app.services.llm.base import ImagePayload, LLMProvider, LLMResult, LLMUsage
 
 _LANDMARK_NAMES = [
     "hooks", "posterior_hook_angle", "tailhead", "pins",
@@ -52,7 +52,7 @@ class GeminiProvider(LLMProvider):
         if not settings.GEMINI_API_KEY:
             raise LLMProviderError("GEMINI_API_KEY is not configured.")
         self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self._model = settings.GEMINI_VISION_MODEL
+        self.model = settings.GEMINI_VISION_MODEL
 
     async def analyze_images(
         self,
@@ -60,7 +60,7 @@ class GeminiProvider(LLMProvider):
         user_instruction: str,
         images: list[ImagePayload],
         max_tokens: int = 4096,
-    ) -> str:
+    ) -> LLMResult:
         parts: list[types.Part | str] = []
         for img in images:
             parts.append(types.Part.from_bytes(data=img.bytes_data, mime_type=img.mime_type))
@@ -70,7 +70,7 @@ class GeminiProvider(LLMProvider):
 
         try:
             response = await self._client.aio.models.generate_content(
-                model=self._model,
+                model=self.model,
                 contents=parts,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
@@ -86,4 +86,17 @@ class GeminiProvider(LLMProvider):
 
         if not response.text:
             raise LLMProviderError("Gemini returned no text content.")
-        return response.text
+
+        usage_meta = response.usage_metadata
+        if usage_meta is None:
+            usage = LLMUsage()
+        else:
+            # thinking_budget=0 above, but Gemini bills thoughts_token_count
+            # (when present) as part of output, so fold it in for parity
+            # with what the provider actually charges.
+            usage = LLMUsage(
+                input_tokens=usage_meta.prompt_token_count,
+                output_tokens=(usage_meta.candidates_token_count or 0)
+                + (usage_meta.thoughts_token_count or 0),
+            )
+        return LLMResult(text=response.text, usage=usage)

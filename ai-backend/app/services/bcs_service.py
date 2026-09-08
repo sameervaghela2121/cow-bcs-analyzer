@@ -2,6 +2,7 @@ import asyncio
 
 from app.core.exceptions import LLMProviderError
 from app.core.logging import get_logger
+from app.core.pricing import CostEstimate, estimate_cost
 from app.prompts.loader import load_prompt
 from app.schemas.bcs import MultiModelBCSResponse, ProviderAssessment
 from app.services.llm.base import ImagePayload, LLMProvider
@@ -16,26 +17,35 @@ async def _run_single_provider(
     system_prompt: str,
     user_instruction: str,
     images: list[ImagePayload],
-) -> ProviderAssessment:
-    raw_text = await provider.analyze_images(
+) -> tuple[ProviderAssessment, CostEstimate | None]:
+    result = await provider.analyze_images(
         system_prompt=system_prompt,
         user_instruction=user_instruction,
         images=images,
         max_tokens=12000,
     )
-    parsed = extract_json_block(raw_text)
+    parsed = extract_json_block(result.text)
     logger.info("Provider '%s' parsed JSON: %s", provider.name, parsed)
+
+    cost = estimate_cost(provider.model, result.usage.input_tokens, result.usage.output_tokens)
+    if cost is not None:
+        logger.info(
+            "Provider '%s' (model=%s) used %d input + %d output tokens -> $%.5f (₹%.4f)",
+            provider.name, provider.model, cost.input_tokens, cost.output_tokens, cost.usd, cost.inr,
+        )
+
     if "assessments" in parsed:
         first = parsed["assessments"][0]
     else:
         first = parsed
-    return ProviderAssessment(
+    assessment = ProviderAssessment(
         recommendation=first["recommendation"],
         finalBcs=first["final_bcs"],
         confidence=first["confidence"],
         status="success",
         errorMessage=None,
     )
+    return assessment, cost
 
 
 async def assess_bcs(
@@ -77,35 +87,49 @@ async def assess_bcs(
         "using your standard methodology."
     )
 
-    async def _safe_run(name: str) -> tuple[str, ProviderAssessment]:
+    async def _safe_run(name: str) -> tuple[str, ProviderAssessment, CostEstimate | None]:
         try:
             provider = get_llm_provider(name)
             if provider.name == "gemini":
                 instruction = base_instruction
             else:
                 instruction = base_instruction + "\n\n" + json_addendum
-            result = await _run_single_provider(provider, system_prompt, instruction, images)
-            return name, result
+            assessment, cost = await _run_single_provider(provider, system_prompt, instruction, images)
+            return name, assessment, cost
         except Exception as exc:  # noqa: BLE001
             logger.warning("Provider '%s' failed: %s", name, exc)
             return name, ProviderAssessment(
                 status="error",
                 errorMessage=str(exc),
-            )
+            ), None
 
     outcomes = await asyncio.gather(*[_safe_run(name) for name in names])
 
     response = MultiModelBCSResponse()
     success_count = 0
-    for name, assessment in outcomes:
+    for name, assessment, _cost in outcomes:
         if hasattr(response, name):
             setattr(response, name, assessment)
             if assessment.status == "success":
                 success_count += 1
 
     if success_count == 0:
-        errors = [f"{name}: {a.errorMessage}" for name, a in outcomes]
+        errors = [f"{name}: {a.errorMessage}" for name, a, _cost in outcomes]
         raise LLMProviderError(f"All providers failed: {errors}")
+
+    # Log the total cost across every provider queried this call, in
+    # rupees, alongside each provider's own share - this is the "how much
+    # did this batch of images cost" line; per-provider token/cost detail
+    # is already logged in _run_single_provider as each call finishes.
+    provider_costs = [(name, cost) for name, _assessment, cost in outcomes if cost is not None]
+    if provider_costs:
+        total_usd = sum(cost.usd for _name, cost in provider_costs)
+        total_inr = sum(cost.inr for _name, cost in provider_costs)
+        breakdown = ", ".join(f"{name}=₹{cost.inr:.4f}" for name, cost in provider_costs)
+        logger.info(
+            "BCS analysis cost for %d image(s) across %d provider(s): ₹%.4f total ($%.5f) [%s]",
+            len(images), len(provider_costs), total_inr, total_usd, breakdown,
+        )
 
     # Computed from `outcomes` (only the providers queried this call), not
     # from `response` directly - untouched provider fields on `response`
@@ -113,7 +137,7 @@ async def assess_bcs(
     # they were never queried, which would otherwise silently pollute this.
     successful_scores = [
         assessment.finalBcs
-        for _, assessment in outcomes
+        for _, assessment, _cost in outcomes
         if assessment.status == "success" and assessment.finalBcs is not None
     ]
     # Mean/median are intentionally not computed here anymore - they're a
