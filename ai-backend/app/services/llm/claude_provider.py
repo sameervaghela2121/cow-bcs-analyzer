@@ -4,7 +4,7 @@ from anthropic import AsyncAnthropic
 
 from app.core.config import settings
 from app.core.exceptions import extract_error_message, LLMProviderError
-from app.services.llm.base import ImagePayload, LLMProvider
+from app.services.llm.base import ImagePayload, LLMProvider, LLMResult, LLMUsage
 
 
 class ClaudeProvider(LLMProvider):
@@ -12,7 +12,7 @@ class ClaudeProvider(LLMProvider):
 
     def __init__(self) -> None:
         self._client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-        self._model = settings.CLAUDE_VISION_MODEL
+        self.model = settings.CLAUDE_VISION_MODEL
 
     async def analyze_images(
         self,
@@ -20,7 +20,7 @@ class ClaudeProvider(LLMProvider):
         user_instruction: str,
         images: list[ImagePayload],
         max_tokens: int = 2000,
-    ) -> str:
+    ) -> LLMResult:
         content: list[dict] = []
         for img in images:
             content.append(
@@ -43,7 +43,7 @@ class ClaudeProvider(LLMProvider):
             # providers get settings.LLM_TEMPERATURE; Claude always runs at
             # its default sampling.
             response = await self._client.messages.create(
-                model=self._model,
+                model=self.model,
                 max_tokens=max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": content}],
@@ -54,4 +54,8 @@ class ClaudeProvider(LLMProvider):
         text_blocks = [b.text for b in response.content if b.type == "text"]
         if not text_blocks:
             raise LLMProviderError("Claude returned no text content.")
-        return "\n".join(text_blocks)
+        usage = LLMUsage(
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+        return LLMResult(text="\n".join(text_blocks), usage=usage)
